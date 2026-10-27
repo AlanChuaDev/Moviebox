@@ -43,7 +43,7 @@ public class SearchActivity extends UiActivity {
     ConfigServer server;
 
     int searchToken = 0;
-    int totalSites, doneSites, hitCount;
+    int totalSites, doneSites, hitCount, failedSites;
     String curKw = "";
     final Set<String> seen = new HashSet<>();
     List<VodApi.Option> curSites = new ArrayList<>();            // 这一次搜索涉及的站点
@@ -207,6 +207,7 @@ public class SearchActivity extends UiActivity {
         }
         grid.removeAllViews();
         hitCount = 0;
+        failedSites = 0;
         doneSites = 0;
         seen.clear();
         doneSpecs.clear();
@@ -260,6 +261,7 @@ public class SearchActivity extends UiActivity {
         if (my != searchToken || isFinishing()) return;
         doneSites++;
         doneSpecs.add(o.url);
+        if (res == null) failedSites++;
         // 搜索途中被屏蔽的站点，结果直接丢掉
         if (res != null && !store.isBlocked(o.url)) {
             List<Movie> keep = new ArrayList<>();
@@ -276,12 +278,12 @@ public class SearchActivity extends UiActivity {
     void updateStatus() {
         String hint = "\n选中站点名按确定键，可以屏蔽这个站点。";
         if (doneSites < totalSites) {
-            statusV.setText("正在搜索「" + curKw + "」…\n已搜 " + doneSites + " / " + totalSites
-                    + " 个站点，找到 " + hitCount + " 个结果");
+            statusV.setText("正在搜索「" + curKw + "」…\n已完成 " + doneSites + " / " + totalSites
+                    + " 个站点，找到 " + hitCount + " 个结果" + (failedSites > 0 ? "，失败 " + failedSites + " 个" : ""));
         } else if (hitCount == 0) {
-            statusV.setText("没有找到「" + curKw + "」的结果（已搜 " + totalSites + " 个站点）。");
+            statusV.setText("没有找到「" + curKw + "」的结果（已搜 " + totalSites + " 个站点，失败 " + failedSites + " 个）。");
         } else {
-            statusV.setText("搜索完成：找到 " + hitCount + " 个结果（" + totalSites + " 个站点）。" + hint);
+            statusV.setText("搜索完成：找到 " + hitCount + " 个结果（" + totalSites + " 个站点，失败 " + failedSites + " 个）。" + hint);
         }
     }
 

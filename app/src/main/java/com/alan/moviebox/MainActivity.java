@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
@@ -26,6 +27,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.HashSet;
+import java.util.Set;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 // 首页（方案 D · 影院暗调）：整屏背景 + 左侧大标题和按钮 + 底部带数字的海报栏。
 // 焦点移到哪部片，上面的标题、简介和背景颜色就跟着换。
@@ -55,6 +60,8 @@ public class MainActivity extends Activity {
     SourceStore store;
     String loadedApi;                                    // 当前首页数据对应的接口；null 表示还没选接口
     final Map<Integer, List<Movie>> cache = new HashMap<>();  // 每个标签读到的片子
+    final Set<Integer> loadingTabs = new HashSet<>();
+    static final String CACHE_PREFS = "moviebox_home_cache_v1";
     volatile List<VodApi.Category> cats;                 // 接口的分类列表（用来找「电影」「剧集」「综艺」）
 
     // 每秒刷新一次时钟
@@ -102,6 +109,7 @@ public class MainActivity extends Activity {
         if (!TextUtils.equals(api, loadedApi)) {
             loadedApi = api;
             cache.clear();
+            loadingTabs.clear();
             cats = null;
             if (curTab >= 0) {
                 int t = curTab;
@@ -251,7 +259,18 @@ public class MainActivity extends Activity {
             applyList(hit, labelFor(n));
             return;
         }
-        applyList(new ArrayList<Movie>(), "加载中…");
+        // Restore cached category metadata before requesting a category page.
+        if (n != 0 && cats == null) readDiskCache(api, 0);
+        // First paint a saved result immediately, then refresh it in the background.
+        List<Movie> saved = readDiskCache(api, n);
+        if (saved != null && !saved.isEmpty()) {
+            cache.put(n, saved);
+            applyList(saved, labelFor(n) + "  ·  正在更新");
+        } else {
+            applyList(new ArrayList<Movie>(), "加载中…");
+        }
+        if (loadingTabs.contains(n)) return;
+        loadingTabs.add(n);
 
         Net.POOL.execute(() -> {
             List<Movie> movies;
@@ -286,10 +305,16 @@ public class MainActivity extends Activity {
             final String msg = emptyMsg;
             final String err = error;
             Net.MAIN.post(() -> {
+                loadingTabs.remove(n);
                 if (!api.equals(store.getActiveApi())) return;  // 读的过程中换了接口，这批数据作废
                 if (result == null) {
-                    if (curTab == n) applyEmpty("加载失败", "这个接口读不出内容，可以到「设置」换一个接口再试。");
-                    if (!isFinishing()) {
+                    List<Movie> old = cache.get(n);
+                    if (old != null && !old.isEmpty()) {
+                        if (curTab == n) applyList(old, labelFor(n) + "  ·  更新失败，显示缓存");
+                    } else if (curTab == n) {
+                        applyEmpty("加载失败", "这个接口读不出内容，可以到「设置」换一个接口再试。");
+                    }
+                    if (!isFinishing() && (old == null || old.isEmpty())) {
                         // 用对话框显示，方便截图发给我排查
                         new AlertDialog.Builder(this).setTitle("加载失败").setMessage(err)
                                 .setPositiveButton("知道了", null).show();
@@ -297,9 +322,80 @@ public class MainActivity extends Activity {
                     return;
                 }
                 cache.put(n, result);
+                writeDiskCache(api, n, result);
                 if (curTab == n) applyList(result, msg != null ? msg : labelFor(n));
             });
         });
+    }
+
+    String diskKey(String api, int tab) {
+        return "home_" + Integer.toHexString(api.hashCode()) + "_" + tab;
+    }
+
+    List<Movie> readDiskCache(String api, int tab) {
+        try {
+            SharedPreferences prefs = getSharedPreferences(CACHE_PREFS, MODE_PRIVATE);
+            String raw = prefs.getString(diskKey(api, tab), null);
+            if (raw == null) return null;
+            JSONObject root = new JSONObject(raw);
+            if (!api.equals(root.optString("api"))) return null;
+            if (tab == 0) {
+                JSONArray savedCats = root.optJSONArray("categories");
+                if (savedCats != null) {
+                    List<VodApi.Category> restored = new ArrayList<>();
+                    for (int i = 0; i < savedCats.length(); i++) {
+                        JSONObject c = savedCats.optJSONObject(i);
+                        if (c != null) restored.add(new VodApi.Category(c.optString("id", ""), c.optString("name", "")));
+                    }
+                    cats = restored;
+                }
+            }
+            JSONArray arr = root.optJSONArray("movies");
+            if (arr == null) return null;
+            List<Movie> out = new ArrayList<>();
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject o = arr.optJSONObject(i);
+                if (o == null) continue;
+                out.add(new Movie(o.optString("title", ""), o.optString("rating", ""),
+                        o.optString("tag", ""), o.optInt("colorIdx", 0),
+                        o.optString("meta", ""), o.optString("desc", ""),
+                        nullableString(o, "poster"), o.optString("vodId", ""),
+                        o.optString("playUrl", "")));
+            }
+            return out;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    void writeDiskCache(String api, int tab, List<Movie> movies) {
+        try {
+            JSONArray arr = new JSONArray();
+            for (Movie m : movies) {
+                JSONObject o = new JSONObject();
+                o.put("title", m.title); o.put("rating", m.rating); o.put("tag", m.tag);
+                o.put("colorIdx", m.colorIdx); o.put("meta", m.meta); o.put("desc", m.desc);
+                o.put("poster", m.poster == null ? JSONObject.NULL : m.poster);
+                o.put("vodId", m.vodId); o.put("playUrl", m.playUrl);
+                arr.put(o);
+            }
+            JSONObject root = new JSONObject();
+            root.put("api", api); root.put("savedAt", System.currentTimeMillis()); root.put("movies", arr);
+            if (tab == 0 && cats != null) {
+                JSONArray catArr = new JSONArray();
+                for (VodApi.Category c : cats) {
+                    JSONObject item = new JSONObject();
+                    item.put("id", c.id); item.put("name", c.name); catArr.put(item);
+                }
+                root.put("categories", catArr);
+            }
+            getSharedPreferences(CACHE_PREFS, MODE_PRIVATE).edit()
+                    .putString(diskKey(api, tab), root.toString()).apply();
+        } catch (Throwable ignored) { }
+    }
+
+    String nullableString(JSONObject o, String key) {
+        return o.isNull(key) ? null : o.optString(key, "");
     }
 
     // 没有内容可显示时：大标题位置放一句短话，简介位置放说明
