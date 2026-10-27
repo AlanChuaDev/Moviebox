@@ -1,6 +1,7 @@
 package com.alan.moviebox;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
@@ -38,7 +39,7 @@ public class MainActivity extends Activity {
     float u;  // 缩放比例：屏幕宽度 ÷ 1280，让所有尺寸在不同分辨率的电视上看起来一样
     FrameLayout root;
     BackdropView backdrop;
-    TextView clock, heroTag, heroTitle, heroMeta, heroDesc, btnPlay, btnInfo, shelfLabel;
+    TextView clock, settingsBtn, heroTag, heroTitle, heroMeta, heroDesc, btnPlay, btnInfo, shelfLabel;
     final TextView[] tabViews = new TextView[TABS.length];
     LinearLayout shelfRow;
     HorizontalScrollView shelf;
@@ -161,8 +162,21 @@ public class MainActivity extends Activity {
 
         View spacer = new View(this);
         bar.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1f));
+
+        // 「设置」：进入设置页，扫码添加接口
+        settingsBtn = tv("设置", 18, C_MUTED, false);
+        settingsBtn.setPadding(px(14), px(8), px(14), px(8));
+        settingsBtn.setFocusable(true);
+        settingsBtn.setClickable(true);
+        settingsBtn.setOnFocusChangeListener((v, has) -> {
+            settingsBtn.setBackground(has ? round(0x29FFFFFF, 20) : null);
+            settingsBtn.setTextColor(has ? C_TEXT : C_MUTED);
+        });
+        settingsBtn.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
+        bar.addView(settingsBtn, lp(-2, -2, 0, 0));
+
         clock = tv(fmt.format(new Date()), 18, C_MUTED, false);
-        bar.addView(clock, lp(-2, -2, 0, 0));
+        bar.addView(clock, lp(-2, -2, 20, 0));
     }
 
     void selectTab(int n) {
@@ -324,7 +338,7 @@ public class MainActivity extends Activity {
     @Override
     public void onBackPressed() {
         View focus = getCurrentFocus();
-        boolean inTabs = false;
+        boolean inTabs = focus == settingsBtn;
         for (TextView t : tabViews) {
             if (t == focus) inTabs = true;
         }

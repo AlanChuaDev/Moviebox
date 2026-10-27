@@ -19,3 +19,8 @@ android {
         targetCompatibility JavaVersion.VERSION_1_8
     }
 }
+
+dependencies {
+    implementation 'org.nanohttpd:nanohttpd:2.3.1'   // 设置页里给手机用的小网页服务
+    implementation 'com.google.zxing:core:3.5.3'     // 生成二维码
+}
