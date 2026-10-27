@@ -1,0 +1,36 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.alan.moviebox'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.alan.moviebox"
+        minSdk 21
+        targetSdk 34
+        versionCode 1
+        versionName "0.1"
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    implementation 'org.nanohttpd:nanohttpd:2.3.1'   // 设置页里给手机用的小网页服务
+    implementation 'com.google.zxing:core:3.5.3'     // 生成二维码
+
+    // 下面三个是给 type 3 爬虫 jar 用的：jar 里的代码会直接用宿主 App 里的这些库，
+    // 如果运行时提示缺某个类，就是还缺一个库，把提示发给我再补
+    implementation 'com.squareup.okhttp3:okhttp:3.12.13'
+    implementation 'org.jsoup:jsoup:1.15.4'
+    implementation 'com.google.code.gson:gson:2.8.9'
+
+    // 播放器（ExoPlayer）：本体 + m3u8（HLS）支持
+    implementation 'androidx.media3:media3-exoplayer:1.2.1'
+    implementation 'androidx.media3:media3-exoplayer-hls:1.2.1'
+}

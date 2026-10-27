@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MovieBox 接口设置</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px 18px 48px; background: #0e0f12; color: #f5f1ea;
+         font: 16px/1.5 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  .wrap { max-width: 560px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: .08em; }
+  h2 { font-size: 17px; margin: 30px 0 10px; }
+  .sub { color: #b9b4aa; margin: 0 0 20px; font-size: 14px; }
+  label { display: block; font-size: 14px; color: #b9b4aa; margin: 14px 0 6px; }
+  input { width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid #34363c;
+          background: #181a1f; color: #f5f1ea; font-size: 16px; }
+  input:focus { outline: none; border-color: #f0a35c; }
+  .primary { width: 100%; margin-top: 18px; padding: 13px; border: 0; border-radius: 10px;
+             background: #f0a35c; color: #1a1208; font-size: 17px; font-weight: 700; }
+  .msg { min-height: 22px; margin-top: 12px; font-size: 14px; }
+  .ok { color: #7fd49a; }
+  .err { color: #ff8a80; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { display: flex; align-items: center; gap: 10px; background: #181a1f;
+       border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; }
+  .info { flex: 1; min-width: 0; }
+  .name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .url { color: #b9b4aa; font-size: 13px; word-break: break-all; }
+  .del { border: 1px solid #4a4d55; background: transparent; color: #ff8a80;
+         border-radius: 8px; padding: 6px 12px; font-size: 14px; }
+  .empty { color: #b9b4aa; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>MOVIEBOX</h1>
+  <p class="sub">在这里添加的接口会马上同步到电视</p>
+
+  <!-- 只有电视上打开了搜索页，才会显示这一块 -->
+  <form id="sf" autocomplete="off" style="display:none">
+    <h2 style="margin-top:0">搜索</h2>
+    <input id="kw" type="text" placeholder="输入片名，发送到电视搜索">
+    <button class="primary" type="submit">在电视上搜索</button>
+    <div id="smsg" class="msg"></div>
+  </form>
+
+  <form id="f" autocomplete="off">
+    <label for="name">名称（可不填）</label>
+    <input id="name" type="text" maxlength="40" placeholder="例如：我的接口">
+    <label for="url">接口地址</label>
+    <input id="url" type="url" inputmode="url" autocapitalize="off" autocorrect="off" placeholder="https://">
+    <button class="primary" type="submit">添加到电视</button>
+    <div id="msg" class="msg"></div>
+  </form>
+
+  <h2>已添加的接口（<span id="count">0</span>）</h2>
+  <ul id="list"></ul>
+</div>
+
+<script>
+var K = new URLSearchParams(location.search).get('k') || '';
+var msg = document.getElementById('msg');
+
+function show(t, ok) {
+  msg.textContent = t;
+  msg.className = 'msg ' + (ok ? 'ok' : 'err');
+}
+
+function fail(e) {
+  show(e instanceof TypeError ? '连不上电视，请确认手机和电视在同一个 Wi-Fi' : e.message, false);
+}
+
+function call(path, data) {
+  var opt = { cache: 'no-store' };
+  if (data) {
+    opt.method = 'POST';
+    opt.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
+    opt.body = new URLSearchParams(data).toString();
+  }
+  return fetch(path + '?k=' + encodeURIComponent(K), opt).then(function (r) {
+    return r.json().catch(function () {
+      throw new Error(r.status === 403 ? '二维码已失效，请在电视上重新扫码' : '请求失败');
+    });
+  });
+}
+
+function render(items) {
+  var ul = document.getElementById('list');
+  ul.textContent = '';
+  document.getElementById('count').textContent = items.length;
+  if (!items.length) {
+    var e = document.createElement('div');
+    e.className = 'empty';
+    e.textContent = '还没有接口';
+    ul.appendChild(e);
+    return;
+  }
+  items.forEach(function (it) {
+    var li = document.createElement('li');
+    var info = document.createElement('div');
+    info.className = 'info';
+    var n = document.createElement('div');
+    n.className = 'name';
+    n.textContent = it.name;
+    var u = document.createElement('div');
+    u.className = 'url';
+    u.textContent = it.url;
+    info.appendChild(n);
+    info.appendChild(u);
+    var b = document.createElement('button');
+    b.className = 'del';
+    b.type = 'button';
+    b.textContent = '删除';
+    b.onclick = function () {
+      if (!confirm('删除「' + it.name + '」？')) return;
+      call('/api/delete', { url: it.url })
+        .then(function (r) { show(r.msg, r.ok); load(); })
+        .catch(fail);
+    };
+    li.appendChild(info);
+    li.appendChild(b);
+    ul.appendChild(li);
+  });
+}
+
+function apply(r) {
+  document.getElementById('sf').style.display = r.search ? 'block' : 'none';
+  render(r.items || []);
+}
+
+function load() {
+  call('/api/list').then(apply).catch(fail);
+}
+
+document.getElementById('sf').onsubmit = function (ev) {
+  ev.preventDefault();
+  var kw = document.getElementById('kw');
+  var sm = document.getElementById('smsg');
+  call('/api/search', { kw: kw.value })
+    .then(function (r) {
+      sm.textContent = r.msg;
+      sm.className = 'msg ' + (r.ok ? 'ok' : 'err');
+    })
+    .catch(function (e) {
+      sm.textContent = e instanceof TypeError ? '连不上电视，请确认手机和电视在同一个 Wi-Fi' : e.message;
+      sm.className = 'msg err';
+    });
+};
+
+document.getElementById('f').onsubmit = function (ev) {
+  ev.preventDefault();
+  var name = document.getElementById('name');
+  var url = document.getElementById('url');
+  call('/api/add', { name: name.value, url: url.value })
+    .then(function (r) {
+      show(r.msg, r.ok);
+      if (r.ok) { name.value = ''; url.value = ''; }
+      load();
+    })
+    .catch(fail);
+};
+
+load();
+// 在电视上删除接口后，手机网页也会跟着更新
+setInterval(function () {
+  call('/api/list').then(apply).catch(function () {});
+}, 4000);
+</script>
+</body>
+</html>
