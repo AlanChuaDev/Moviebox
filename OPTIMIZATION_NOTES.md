@@ -7,3 +7,8 @@
 - Legacy locally stored Data API key is removed when this version opens.
 
 Validation: source references and archive integrity checked. Android compilation and actual TV-device behavior still need verification through the project's GitHub Actions workflow and on-device testing.
+
+## 本次更新（2026-10-28）
+- 设置页加入电视遥控器可操作的手动接口添加对话框，继续复用 `SourceStore.add()` 做地址校验和去重。
+- YouTube 页面加入 `WebChromeClient` 自定义全屏视图回调，支持网页视频全屏和返回退出。
+- 尚未在 Android SDK / 设备上完成构建与实机验证；Moviebox ExoPlayer 不直接解析 YouTube 网页流。

@@ -67,3 +67,9 @@
 - Google may block account sign-in inside third-party embedded WebViews. If sign-in is needed, use the official YouTube app.
 
 The source was statically reviewed and the ZIP archive was integrity-checked. Android compilation and TV-device playback have not been verified in this environment.
+
+## 本次更新
+
+- 设置页面新增“手动添加接口”，可在电视上直接输入接口名称和地址；原来的手机扫码添加功能继续保留。
+- YouTube WebView 增加全屏视频视图处理，点击网页内的全屏按钮时可进入全屏，按返回键退出。
+- Moviebox 内置 ExoPlayer 目前播放的是接口返回的媒体流，不能直接把 YouTube 网页地址当成视频流播放；YouTube 全屏仍由 YouTube 网页自身处理。

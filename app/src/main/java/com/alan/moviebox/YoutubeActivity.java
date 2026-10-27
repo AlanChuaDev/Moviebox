@@ -10,6 +10,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.KeyEvent;
+import android.view.ViewGroup;
 import android.view.View;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
@@ -30,6 +31,9 @@ public class YoutubeActivity extends Activity {
     private LinearLayout root;
     private WebView web;
     private TextView status;
+    private View fullscreenView;
+    private WebChromeClient.CustomViewCallback fullscreenCallback;
+    private WebChromeClient chromeClient;
 
     private int dp(float value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
@@ -110,7 +114,38 @@ public class YoutubeActivity extends Activity {
         settings.setLoadWithOverviewMode(true);
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
-        web.setWebChromeClient(new WebChromeClient());
+        chromeClient = new WebChromeClient() {
+            @Override public void onShowCustomView(View view, CustomViewCallback callback) {
+                if (fullscreenView != null) {
+                    callback.onCustomViewHidden();
+                    return;
+                }
+                fullscreenView = view;
+                fullscreenCallback = callback;
+                root.setVisibility(View.GONE);
+                getWindow().getDecorView().setSystemUiVisibility(
+                        View.SYSTEM_UI_FLAG_FULLSCREEN
+                                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                                | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+                addContentView(view, new ViewGroup.LayoutParams(-1, -1));
+            }
+
+            @Override public void onHideCustomView() {
+                if (fullscreenView == null) return;
+                try { ((ViewGroup) fullscreenView.getParent()).removeView(fullscreenView); } catch (Exception ignored) { }
+                fullscreenView = null;
+                root.setVisibility(View.VISIBLE);
+                getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+                if (fullscreenCallback != null) {
+                    fullscreenCallback.onCustomViewHidden();
+                    fullscreenCallback = null;
+                }
+            }
+        };
+        web.setWebChromeClient(chromeClient);
         web.setWebViewClient(new WebViewClient() {
             @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
                 if (status != null) status.setText("正在加载 YouTube 内容……");
@@ -165,6 +200,10 @@ public class YoutubeActivity extends Activity {
     }
 
     @Override public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_BACK && fullscreenView != null) {
+            if (chromeClient != null) chromeClient.onHideCustomView();
+            return true;
+        }
         if (keyCode == KeyEvent.KEYCODE_BACK && web != null && web.canGoBack()) {
             web.goBack();
             return true;
@@ -175,6 +214,11 @@ public class YoutubeActivity extends Activity {
     @Override protected void onDestroy() {
         if (web != null) {
             web.stopLoading();
+            if (fullscreenView != null && fullscreenCallback != null) {
+                fullscreenCallback.onCustomViewHidden();
+                fullscreenView = null;
+                fullscreenCallback = null;
+            }
             web.setWebChromeClient(null);
             web.setWebViewClient(null);
             web.destroy();

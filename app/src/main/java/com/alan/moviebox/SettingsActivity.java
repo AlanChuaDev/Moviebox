@@ -14,7 +14,9 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
+import android.widget.EditText;
 import android.widget.ImageView;
+import android.text.InputType;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -44,7 +46,7 @@ public class SettingsActivity extends Activity {
     String token = "";
 
     ImageView qrView;
-    TextView urlText, countLabel, regenBtn;
+    TextView urlText, countLabel, regenBtn, manualAddBtn;
     LinearLayout listBox;
     final List<LinearLayout> rows = new ArrayList<>();
     final List<TextView> hints = new ArrayList<>();
@@ -178,13 +180,70 @@ public class SettingsActivity extends Activity {
         countLabel = tv("已添加的接口", 24, MainActivity.C_TEXT, true);
         root.addView(countLabel, at(540, 112, -2, -2));
 
+        manualAddBtn = tv("＋ 手动添加接口", 19, MainActivity.C_TEXT, true);
+        manualAddBtn.setGravity(Gravity.CENTER);
+        manualAddBtn.setPadding(px(18), px(10), px(18), px(10));
+        manualAddBtn.setFocusable(true);
+        manualAddBtn.setClickable(true);
+        manualAddBtn.setBackground(box(0x29F5F1EA, 8, false));
+        manualAddBtn.setOnFocusChangeListener((v, has) -> manualAddBtn.setBackground(box(has ? 0x66F5F1EA : 0x29F5F1EA, 8, has)));
+        manualAddBtn.setOnClickListener(v -> showManualAddDialog());
+        root.addView(manualAddBtn, at(540, 154, 250, 48));
+
         ScrollView scroll = new ScrollView(this);
         scroll.setVerticalScrollBarEnabled(false);
         listBox = new LinearLayout(this);
         listBox.setOrientation(LinearLayout.VERTICAL);
         listBox.setPadding(px(4), px(8), px(4), px(8));
         scroll.addView(listBox, new FrameLayout.LayoutParams(-1, -2));
-        root.addView(scroll, at(540, 160, 676, 520));
+        root.addView(scroll, at(540, 214, 676, 466));
+    }
+
+    // 电视遥控器可直接输入接口名称和地址；二维码添加方式继续保留。
+    void showManualAddDialog() {
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        int pad = px(8);
+        form.setPadding(pad, pad, pad, pad);
+
+        EditText nameInput = new EditText(this);
+        nameInput.setSingleLine(true);
+        nameInput.setTextSize(18);
+        nameInput.setTextColor(MainActivity.C_TEXT);
+        nameInput.setHintTextColor(MainActivity.C_MUTED);
+        nameInput.setHint("接口名称（可不填）");
+        nameInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        form.addView(nameInput, new LinearLayout.LayoutParams(-1, px(54)));
+
+        EditText urlInput = new EditText(this);
+        urlInput.setSingleLine(true);
+        urlInput.setTextSize(18);
+        urlInput.setTextColor(MainActivity.C_TEXT);
+        urlInput.setHintTextColor(MainActivity.C_MUTED);
+        urlInput.setHint("接口地址，例如 https://example.com/api.php/provide/vod");
+        urlInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        form.addView(urlInput, new LinearLayout.LayoutParams(-1, px(58)));
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("手动添加接口")
+                .setView(form)
+                .setPositiveButton("添加", null)
+                .setNegativeButton("取消", null)
+                .create();
+        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String error = store.add(nameInput.getText().toString(), urlInput.getText().toString());
+            if (error != null) {
+                Toast.makeText(this, error, Toast.LENGTH_LONG).show();
+                return;
+            }
+            dialog.dismiss();
+            refreshList();
+            manualAddBtn.requestFocus();
+            toast("接口已添加，可在右侧列表选择使用");
+        }));
+        dialog.show();
+        dialog.getWindow().setLayout(px(760), -2);
+        nameInput.requestFocus();
     }
 
     // 重新画列表；如果焦点原来在某一行上，重画后焦点留在同一个位置
