@@ -54,6 +54,23 @@ public class Catalog {
         }
     }
 
+    // ---------- 搜索 ----------
+
+    // 在一个站点里搜片名。全站搜索会同时搜很多站点，所以这里不排队，也不能抛错误给界面以外的地方。
+    public static VodApi.Page search(Context c, SiteSpec s, String keyword) throws Throwable {
+        if (!s.isSpider()) {
+            String url = s.api + (s.api.contains("?") ? "&" : "?")
+                    + "ac=detail&wd=" + URLEncoder.encode(keyword, "UTF-8");
+            try {
+                return VodApi.parse(new JSONObject(Net.getText(url)), s.api);
+            } catch (JSONException e) {
+                throw new Exception("接口返回的内容不是 JSON");
+            }
+        }
+        Object sp = SpiderRuntime.get(c.getApplicationContext(), s);
+        return VodApi.parse(asJson(SpiderRuntime.call(sp, "searchContent", keyword, false)), null);
+    }
+
     // ---------- 详情 ----------
 
     // 一部片的详细信息，包括播放线路和每一集

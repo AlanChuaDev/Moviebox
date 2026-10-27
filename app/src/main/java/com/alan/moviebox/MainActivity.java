@@ -167,18 +167,18 @@ public class MainActivity extends Activity {
             toast("这是示例数据，请先在设置里选一个接口");
             return;
         }
-        Intent in = new Intent(this, DetailActivity.class);
-        in.putExtra("spec", api);
-        in.putExtra("vodId", m.vodId);
-        in.putExtra("title", m.title);
-        in.putExtra("poster", m.poster == null ? "" : m.poster);
-        in.putExtra("meta", m.meta);
-        in.putExtra("desc", m.desc);
-        in.putExtra("rating", m.rating);
-        in.putExtra("color", m.colorIdx);
-        in.putExtra("playUrl", m.playUrl == null ? "" : m.playUrl);
-        in.putExtra("autoplay", autoplay);
-        startActivity(in);
+        // 豆瓣热播榜这类条目不是真正的片子，是「拿片名去所有站点搜索」的入口（影视仓也是这样处理）
+        if (m.vodId.startsWith("msearch:")) {
+            SearchActivity.start(this, m.title);
+            return;
+        }
+        DetailActivity.start(this, api, m, autoplay);
+    }
+
+    // 栏目标题：在后面加上当前站点名，免得分不清现在看的是哪个站点的内容
+    String labelFor(int tab) {
+        String name = store.getActiveName();
+        return name.isEmpty() ? SHELF_LABELS[tab] : SHELF_LABELS[tab] + "  ·  " + name;
     }
 
     // ---------- 顶部：MOVIEBOX + 标签 + 时钟 ----------
@@ -204,7 +204,7 @@ public class MainActivity extends Activity {
                 paintTabs();
             });
             t.setOnClickListener(v -> {
-                if (n == DATA_TABS) toast("「搜索」功能后面的阶段再做");
+                if (n == DATA_TABS) SearchActivity.start(this, "");
             });
             bar.addView(t, lp(-2, -2, i == 0 ? 28 : 0, 0));
             tabViews[i] = t;
@@ -248,7 +248,7 @@ public class MainActivity extends Activity {
         }
         List<Movie> hit = cache.get(n);
         if (hit != null) {
-            applyList(hit, SHELF_LABELS[n]);
+            applyList(hit, labelFor(n));
             return;
         }
         applyList(new ArrayList<Movie>(), "加载中…");
@@ -297,7 +297,7 @@ public class MainActivity extends Activity {
                     return;
                 }
                 cache.put(n, result);
-                if (curTab == n) applyList(result, msg != null ? msg : SHELF_LABELS[n]);
+                if (curTab == n) applyList(result, msg != null ? msg : labelFor(n));
             });
         });
     }

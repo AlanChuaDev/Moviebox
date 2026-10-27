@@ -91,6 +91,37 @@ public class SourceStore {
         return sp.getString("activeName", "");
     }
 
+    // ---------- 站点池：选中站点时，同一份配置里的所有站点，全站搜索时会逐个搜 ----------
+
+    public synchronized void setPool(List<VodApi.Option> pool) {
+        try {
+            JSONArray a = new JSONArray();
+            for (VodApi.Option o : pool) {
+                JSONObject j = new JSONObject();
+                j.put("name", o.name);
+                j.put("spec", o.url);
+                a.put(j);
+            }
+            sp.edit().putString("pool", a.toString()).apply();
+        } catch (Exception e) {
+            // 写入失败就保留旧的
+        }
+    }
+
+    public synchronized List<VodApi.Option> getPool() {
+        List<VodApi.Option> out = new ArrayList<>();
+        try {
+            JSONArray a = new JSONArray(sp.getString("pool", "[]"));
+            for (int i = 0; i < a.length(); i++) {
+                JSONObject j = a.getJSONObject(i);
+                out.add(new VodApi.Option(j.optString("name"), j.optString("spec")));
+            }
+        } catch (Exception e) {
+            // 数据损坏时当作空
+        }
+        return out;
+    }
+
     public synchronized void clearActive() {
         sp.edit().remove("activeName").remove("activeApi").apply();
     }

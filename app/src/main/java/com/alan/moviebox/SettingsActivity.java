@@ -302,7 +302,10 @@ public class SettingsActivity extends Activity {
     void onResolved(String name, String url, VodApi.Resolved r, int depth) {
         if (isFinishing()) return;
         if ("direct".equals(r.kind)) {
-            choose(name, new SiteSpec(1, url, "", "").toString());
+            String spec = new SiteSpec(1, url, "", "").toString();
+            List<VodApi.Option> single = new ArrayList<>();
+            single.add(new VodApi.Option(name, spec));
+            choose(name, spec, single);
         } else if ("lines".equals(r.kind)) {
             if (depth >= 2 || r.options.isEmpty()) {
                 showInfo("这里面没有可用的线路。");
@@ -321,12 +324,15 @@ public class SettingsActivity extends Activity {
             }
             String title = "选择站点（共 " + r.options.size() + " 个可用"
                     + (r.unsupported > 0 ? "，另有 " + r.unsupported + " 个暂不支持" : "") + "）";
-            showChoice(title, r.options, o -> choose(o.name, o.url));
+            final List<VodApi.Option> pool = r.options;
+            showChoice(title, pool, o -> choose(o.name, o.url, pool));
         }
     }
 
-    void choose(String name, String api) {
-        store.setActive(name, api);
+    // 选定当前站点；同一份配置里的所有站点一起存成「站点池」，全站搜索要用
+    void choose(String name, String spec, List<VodApi.Option> pool) {
+        store.setActive(name, spec);
+        store.setPool(pool);
         toast("已切换到「" + name + "」");
         finish();  // 回到首页，首页会自己重新读数据
     }

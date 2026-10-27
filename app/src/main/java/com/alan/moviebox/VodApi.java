@@ -117,8 +117,9 @@ public class VodApi {
                 if (name.isEmpty()) name = str(s, "key");
                 int type = s.optInt("type", -1);
 
+                boolean searchable = s.optInt("searchable", 1) != 0;
                 if (type == 1 && api.startsWith("http")) {
-                    r.options.add(new Option(name, new SiteSpec(1, api, "", "").toString()));
+                    r.options.add(new Option(name, new SiteSpec(1, api, "", "", searchable).toString()));
                 } else if (type == 3 && api.startsWith("csp_")) {
                     // 爬虫站点：站点自己可以指定 jar，没有就用配置顶部的 spider
                     String jar = jarUrl(baseUrl, str(s, "jar"));
@@ -129,7 +130,8 @@ public class VodApi {
                     }
                     Object ext = s.opt("ext");
                     String extStr = (ext == null || JSONObject.NULL.equals(ext)) ? "" : ext.toString();
-                    r.options.add(new Option(name + "  [爬虫]", new SiteSpec(3, api, jar, extStr).toString()));
+                    r.options.add(new Option(name + "  [爬虫]",
+                            new SiteSpec(3, api, jar, extStr, searchable).toString()));
                 } else {
                     r.unsupported++;
                 }

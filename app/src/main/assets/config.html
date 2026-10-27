@@ -38,6 +38,14 @@
   <h1>MOVIEBOX</h1>
   <p class="sub">在这里添加的接口会马上同步到电视</p>
 
+  <!-- 只有电视上打开了搜索页，才会显示这一块 -->
+  <form id="sf" autocomplete="off" style="display:none">
+    <h2 style="margin-top:0">搜索</h2>
+    <input id="kw" type="text" placeholder="输入片名，发送到电视搜索">
+    <button class="primary" type="submit">在电视上搜索</button>
+    <div id="smsg" class="msg"></div>
+  </form>
+
   <form id="f" autocomplete="off">
     <label for="name">名称（可不填）</label>
     <input id="name" type="text" maxlength="40" placeholder="例如：我的接口">
@@ -117,9 +125,29 @@ function render(items) {
   });
 }
 
-function load() {
-  call('/api/list').then(function (r) { render(r.items || []); }).catch(fail);
+function apply(r) {
+  document.getElementById('sf').style.display = r.search ? 'block' : 'none';
+  render(r.items || []);
 }
+
+function load() {
+  call('/api/list').then(apply).catch(fail);
+}
+
+document.getElementById('sf').onsubmit = function (ev) {
+  ev.preventDefault();
+  var kw = document.getElementById('kw');
+  var sm = document.getElementById('smsg');
+  call('/api/search', { kw: kw.value })
+    .then(function (r) {
+      sm.textContent = r.msg;
+      sm.className = 'msg ' + (r.ok ? 'ok' : 'err');
+    })
+    .catch(function (e) {
+      sm.textContent = e instanceof TypeError ? '连不上电视，请确认手机和电视在同一个 Wi-Fi' : e.message;
+      sm.className = 'msg err';
+    });
+};
 
 document.getElementById('f').onsubmit = function (ev) {
   ev.preventDefault();
@@ -137,7 +165,7 @@ document.getElementById('f').onsubmit = function (ev) {
 load();
 // 在电视上删除接口后，手机网页也会跟着更新
 setInterval(function () {
-  call('/api/list').then(function (r) { render(r.items || []); }).catch(function () {});
+  call('/api/list').then(apply).catch(function () {});
 }, 4000);
 </script>
 </body>

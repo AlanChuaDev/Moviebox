@@ -1,5 +1,6 @@
 package com.alan.moviebox;
 
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
@@ -120,6 +121,22 @@ public class DetailActivity extends UiActivity {
         setContentView(root);
         playBtn.requestFocus();
         load();
+    }
+
+    // 从任何页面打开详情页。spec 是这部片所属站点的规格（搜索结果里每部片可能来自不同站点）。
+    public static void start(Context c, String spec, Movie m, boolean autoplay) {
+        Intent in = new Intent(c, DetailActivity.class);
+        in.putExtra("spec", spec);
+        in.putExtra("vodId", m.vodId == null ? "" : m.vodId);
+        in.putExtra("title", m.title);
+        in.putExtra("poster", m.poster == null ? "" : m.poster);
+        in.putExtra("meta", m.meta);
+        in.putExtra("desc", m.desc);
+        in.putExtra("rating", m.rating);
+        in.putExtra("color", m.colorIdx);
+        in.putExtra("playUrl", m.playUrl == null ? "" : m.playUrl);
+        in.putExtra("autoplay", autoplay);
+        c.startActivity(in);
     }
 
     String ex(Intent in, String key) {

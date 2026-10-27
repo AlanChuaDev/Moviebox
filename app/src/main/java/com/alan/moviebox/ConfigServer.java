@@ -22,26 +22,37 @@ public class ConfigServer extends NanoHTTPD {
         void onChanged(String msg);
     }
 
+    // 手机在网页里发来了要搜索的关键词（只有搜索页打开时才会有这个监听）
+    public interface SearchListener {
+        void onSearch(String keyword);
+    }
+
     private static final int FIRST_PORT = 8899;
 
     private final Context ctx;
     private final SourceStore store;
     private final String token;
     private final Listener listener;
+    private final SearchListener searchListener;
     private String page;
 
-    private ConfigServer(int port, Context ctx, SourceStore store, String token, Listener l) {
+    private ConfigServer(int port, Context ctx, SourceStore store, String token, Listener l, SearchListener sl) {
         super(port);
         this.ctx = ctx.getApplicationContext();
         this.store = store;
         this.token = token;
         this.listener = l;
+        this.searchListener = sl;
+    }
+
+    public static ConfigServer startNew(Context c, SourceStore st, String token, Listener l) {
+        return startNew(c, st, token, l, null);
     }
 
     // 从 8899 开始找一个没被占用的端口启动；全都失败返回 null
-    public static ConfigServer startNew(Context c, SourceStore st, String token, Listener l) {
+    public static ConfigServer startNew(Context c, SourceStore st, String token, Listener l, SearchListener sl) {
         for (int p = FIRST_PORT; p < FIRST_PORT + 10; p++) {
-            ConfigServer s = new ConfigServer(p, c, st, token, l);
+            ConfigServer s = new ConfigServer(p, c, st, token, l, sl);
             try {
                 s.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
                 return s;
@@ -99,7 +110,15 @@ public class ConfigServer extends NanoHTTPD {
                 }
                 o.put("ok", true);
                 o.put("items", a);
+                o.put("search", searchListener != null);  // 网页据此决定要不要显示搜索框
                 return json(o);
+            }
+            if (post && "/api/search".equals(uri)) {
+                String kw = q.get("kw") == null ? "" : q.get("kw").trim();
+                if (searchListener == null) return json(result(false, "请先在电视上打开搜索页"));
+                if (kw.isEmpty()) return json(result(false, "请输入要搜索的片名"));
+                searchListener.onSearch(kw);
+                return json(result(true, "已发送到电视，正在搜索"));
             }
             if (post && "/api/add".equals(uri)) {
                 String err = store.add(q.get("name"), q.get("url"));
