@@ -1,6 +1,7 @@
 package com.alan.moviebox;
 
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
@@ -19,6 +20,8 @@ public class PosterView extends View {
     private final Path clip = new Path();
     private final Movie movie;
     private final float u;
+    private final Rect src = new Rect();
+    private Bitmap bmp;  // 真实海报；还没下载好或没有时为 null，用图案代替
 
     public PosterView(Context c, Movie m, float u) {
         super(c);
@@ -26,6 +29,12 @@ public class PosterView extends View {
         this.u = u;
         setFocusable(true);
         setClickable(true);
+        if (m.poster != null) {
+            Images.load(m.poster, Math.round(112 * u * 1.3f), b -> {
+                bmp = b;
+                invalidate();
+            });
+        }
     }
 
     @Override
@@ -54,14 +63,27 @@ public class PosterView extends View {
         p.setColor(t[0]);
         c.drawRect(rect, p);
 
-        // 图案：按编号换五种样子
-        p.setColor(t[1]);
-        switch (Math.abs(movie.colorIdx) % 5) {
-            case 0: c.drawCircle(36 * u, 86 * u, 60 * u, p); break;
-            case 1: c.drawCircle(75 * u, 25 * u, 55 * u, p); break;
-            case 2: c.drawRect(0, 60 * u, w, 86 * u, p); break;
-            case 3: c.drawCircle(75 * u, 65 * u, 45 * u, p); break;
-            default: c.drawCircle(40 * u, 90 * u, 50 * u, p); break;
+        if (bmp != null) {
+            // 真实海报：按「铺满并居中裁剪」画进来
+            float scale = Math.max((float) w / bmp.getWidth(), (float) h / bmp.getHeight());
+            int sw = Math.min(bmp.getWidth(), Math.round(w / scale));
+            int sh = Math.min(bmp.getHeight(), Math.round(h / scale));
+            int sx = (bmp.getWidth() - sw) / 2;
+            int sy = (bmp.getHeight() - sh) / 2;
+            src.set(sx, sy, sx + sw, sy + sh);
+            p.setFilterBitmap(true);
+            c.drawBitmap(bmp, src, rect, p);
+            p.setFilterBitmap(false);
+        } else {
+            // 没有真图：按编号换五种图案
+            p.setColor(t[1]);
+            switch (Math.abs(movie.colorIdx) % 5) {
+                case 0: c.drawCircle(36 * u, 86 * u, 60 * u, p); break;
+                case 1: c.drawCircle(75 * u, 25 * u, 55 * u, p); break;
+                case 2: c.drawRect(0, 60 * u, w, 86 * u, p); break;
+                case 3: c.drawCircle(75 * u, 65 * u, 45 * u, p); break;
+                default: c.drawCircle(40 * u, 90 * u, 50 * u, p); break;
+            }
         }
 
         // 底部暗色渐变，托住标题

@@ -18,9 +18,12 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 // 首页（方案 D · 影院暗调）：整屏背景 + 左侧大标题和按钮 + 底部带数字的海报栏。
 // 焦点移到哪部片，上面的标题、简介和背景颜色就跟着换。
@@ -47,6 +50,11 @@ public class MainActivity extends Activity {
     int curTab = -1;
     long lastBack = 0;
 
+    SourceStore store;
+    String loadedApi;                                    // 当前首页数据对应的接口；null 表示示例数据
+    final Map<Integer, List<Movie>> cache = new HashMap<>();  // 每个标签读到的片子
+    volatile List<VodApi.Category> cats;                 // 接口的分类列表（用来找「电影」「剧集」「综艺」）
+
     // 每秒刷新一次时钟
     final Runnable tick = new Runnable() {
         @Override
@@ -61,6 +69,8 @@ public class MainActivity extends Activity {
         super.onCreate(b);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         u = getResources().getDisplayMetrics().widthPixels / 1280f;
+        store = new SourceStore(this);
+        loadedApi = store.getActiveApi();
 
         root = new FrameLayout(this);
         root.setBackgroundColor(C_DARK);
@@ -80,6 +90,23 @@ public class MainActivity extends Activity {
         super.onStart();
         h.removeCallbacks(tick);
         h.post(tick);
+    }
+
+    // 从设置页回来时，如果换了接口，就清掉旧数据重新读
+    @Override
+    protected void onResume() {
+        super.onResume();
+        String api = store.getActiveApi();
+        if (!TextUtils.equals(api, loadedApi)) {
+            loadedApi = api;
+            cache.clear();
+            cats = null;
+            if (curTab >= 0) {
+                int t = curTab;
+                curTab = -1;
+                selectTab(t);
+            }
+        }
     }
 
     @Override
@@ -185,9 +212,79 @@ public class MainActivity extends Activity {
             return;
         }
         curTab = n;
-        rebuildShelf();
-        showMovie(SampleData.forTab(n).get(0));
+        loadTab(n);
         paintTabs();
+    }
+
+    // 给当前标签准备数据：没选接口就用示例数据，选了接口就联网读（读过的有缓存）
+    void loadTab(final int n) {
+        final String api = store.getActiveApi();
+        if (api == null) {
+            applyList(SampleData.forTab(n), SHELF_LABELS[n]);
+            return;
+        }
+        List<Movie> hit = cache.get(n);
+        if (hit != null) {
+            applyList(hit, SHELF_LABELS[n]);
+            return;
+        }
+        applyList(new ArrayList<Movie>(), "加载中…");
+
+        Net.POOL.execute(() -> {
+            List<Movie> movies;
+            String emptyMsg = null;
+            String error = null;
+            try {
+                VodApi.Page page;
+                if (n == 0) {
+                    page = VodApi.fetch(api, null);
+                    cats = page.categories;
+                } else {
+                    if (cats == null) cats = VodApi.fetch(api, null).categories;
+                    String typeId = VodApi.matchCategory(cats, n);
+                    if (typeId == null) {
+                        page = new VodApi.Page();
+                        emptyMsg = "这个接口里没有「" + TABS[n] + "」分类";
+                    } else {
+                        page = VodApi.fetch(api, typeId);
+                    }
+                }
+                movies = page.movies;
+                if (movies.isEmpty() && emptyMsg == null) emptyMsg = "这个分类里暂时没有内容";
+            } catch (Exception e) {
+                movies = null;
+                error = e.getMessage() == null ? e.toString() : e.getMessage();
+            }
+
+            final List<Movie> result = movies;
+            final String msg = emptyMsg;
+            final String err = error;
+            Net.MAIN.post(() -> {
+                if (!api.equals(store.getActiveApi())) return;  // 读的过程中换了接口，这批数据作废
+                if (result == null) {
+                    toast("加载失败：" + err);
+                    if (curTab == n) applyList(SampleData.forTab(n), "加载失败，显示的是示例数据");
+                    return;
+                }
+                cache.put(n, result);
+                if (curTab == n) applyList(result, msg != null ? msg : SHELF_LABELS[n]);
+            });
+        });
+    }
+
+    // 把一批片子放到海报栏里；空的时候把说明文字显示在大标题的位置
+    void applyList(List<Movie> list, String label) {
+        rebuildShelf(list, label);
+        if (!list.isEmpty()) {
+            showMovie(list.get(0));
+            return;
+        }
+        current = null;
+        backdrop.setTheme(SampleData.theme(0));
+        heroTitle.setText(label);
+        heroTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, 44 * u);
+        heroMeta.setText("");
+        heroDesc.setText("");
     }
 
     // 选中的标签字是亮的、加粗；焦点所在的标签有一个浅色的胶囊底
@@ -274,7 +371,7 @@ public class MainActivity extends Activity {
         heroTitle.setText(m.title);
         int len = m.title.length();
         heroTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, (len <= 4 ? 92 : (len <= 6 ? 72 : 56)) * u);
-        heroMeta.setText(m.rating + "   ·   " + m.meta);
+        heroMeta.setText(m.rating.isEmpty() ? m.meta : m.rating + "   ·   " + m.meta);
         heroDesc.setText(m.desc);
 
         GradientDrawable g = new GradientDrawable();
@@ -304,9 +401,8 @@ public class MainActivity extends Activity {
         root.addView(shelf, at(0, 492, -1, 208));
     }
 
-    void rebuildShelf() {
+    void rebuildShelf(List<Movie> list, String label) {
         shelfRow.removeAllViews();
-        List<Movie> list = SampleData.forTab(curTab);
         for (int i = 0; i < list.size(); i++) {
             final Movie m = list.get(i);
 
@@ -330,7 +426,7 @@ public class MainActivity extends Activity {
             shelfRow.addView(item, ip);
         }
         shelf.scrollTo(0, 0);
-        shelfLabel.setText(SHELF_LABELS[curTab]);
+        shelfLabel.setText(label);
     }
 
     // ---------- 返回键：不在顶部标签时先回到标签，再按一次（2 秒内）才退出 ----------

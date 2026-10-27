@@ -1,6 +1,7 @@
 package com.alan.moviebox;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.graphics.Bitmap;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -163,6 +164,12 @@ public class SettingsActivity extends Activity {
             toast("已重新生成，旧二维码失效");
         });
         left.addView(regenBtn, lp(-2, -2, 0, 16));
+
+        String active = store.getActiveApi() == null ? "示例数据（还没选接口）" : store.getActiveName();
+        TextView activeText = tv("当前使用：" + active, 16, MainActivity.C_MUTED, false);
+        activeText.setSingleLine(true);
+        activeText.setEllipsize(TextUtils.TruncateAt.END);
+        left.addView(activeText, lp(-1, -2, 0, 14));
     }
 
     // ---------- 右边：接口列表 ----------
@@ -240,7 +247,9 @@ public class SettingsActivity extends Activity {
         hints.add(hint);
 
         row.setOnFocusChangeListener((v, has) -> paintRow(row, hint, s, has));
-        row.setOnClickListener(v -> {
+        row.setOnClickListener(v -> useSource(s));  // 按确定键：使用这个接口
+        row.setLongClickable(true);
+        row.setOnLongClickListener(v -> {           // 长按确定键：删除（要连续长按两次）
             long now = System.currentTimeMillis();
             if (s.url.equals(pendingUrl) && now - pendingAt < 3000) {
                 pendingUrl = null;
@@ -253,6 +262,7 @@ public class SettingsActivity extends Activity {
                 paintRow(row, hint, s, true);
                 h.postDelayed(() -> paintRow(row, hint, s, row.isFocused()), 3100);
             }
+            return true;
         });
 
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2);
@@ -263,7 +273,73 @@ public class SettingsActivity extends Activity {
     void paintRow(LinearLayout row, TextView hint, SourceStore.Source s, boolean focused) {
         row.setBackground(box(focused ? 0x4DF5F1EA : 0x29F5F1EA, 8, focused));
         boolean confirming = s.url.equals(pendingUrl) && System.currentTimeMillis() - pendingAt < 3000;
-        hint.setText(!focused ? "" : (confirming ? "再按一次确定删除" : "按确定键删除"));
+        hint.setText(!focused ? "" : (confirming ? "再长按一次确定删除" : "确定键使用 · 长按删除"));
+    }
+
+    // ---------- 使用一个接口：识别它是什么，必要时让用户选线路 / 站点 ----------
+
+    interface OnPick {
+        void pick(VodApi.Option o);
+    }
+
+    void useSource(SourceStore.Source s) {
+        toast("正在读取「" + s.name + "」…");
+        resolveAndPick(s.name, s.url, 0);
+    }
+
+    void resolveAndPick(final String name, final String url, final int depth) {
+        Net.POOL.execute(() -> {
+            try {
+                final VodApi.Resolved r = VodApi.resolve(Net.getText(url));
+                Net.MAIN.post(() -> onResolved(name, url, r, depth));
+            } catch (final Exception e) {
+                final String m = e.getMessage() == null ? e.toString() : e.getMessage();
+                Net.MAIN.post(() -> toast("读取失败：" + m));
+            }
+        });
+    }
+
+    void onResolved(String name, String url, VodApi.Resolved r, int depth) {
+        if (isFinishing()) return;
+        if ("direct".equals(r.kind)) {
+            choose(name, url);
+        } else if ("lines".equals(r.kind)) {
+            if (depth >= 2 || r.options.isEmpty()) {
+                showInfo("这里面没有可用的线路。");
+                return;
+            }
+            showChoice("选择线路（共 " + r.options.size() + " 条）", r.options, o -> {
+                toast("正在读取「" + o.name + "」…");
+                resolveAndPick(o.name, o.url, depth + 1);
+            });
+        } else {
+            if (r.options.isEmpty()) {
+                showInfo("这条线路共 " + r.totalSites + " 个站点，但没有 type 1 的站点"
+                        + "（需要爬虫插件的站点暂时不支持）。请换一条线路，或添加你自己的接口地址。");
+                return;
+            }
+            showChoice("选择站点（共 " + r.options.size() + " 个可用）", r.options, o -> choose(o.name, o.url));
+        }
+    }
+
+    void choose(String name, String api) {
+        store.setActive(name, api);
+        toast("已切换到「" + name + "」");
+        finish();  // 回到首页，首页会自己重新读数据
+    }
+
+    void showChoice(String title, final List<VodApi.Option> opts, final OnPick cb) {
+        String[] names = new String[opts.size()];
+        for (int i = 0; i < names.length; i++) names[i] = opts.get(i).name;
+        new AlertDialog.Builder(this)
+                .setTitle(title)
+                .setItems(names, (d, which) -> cb.pick(opts.get(which)))
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    void showInfo(String msg) {
+        new AlertDialog.Builder(this).setMessage(msg).setPositiveButton("知道了", null).show();
     }
 
     // ---------- 网页服务 + 二维码 ----------

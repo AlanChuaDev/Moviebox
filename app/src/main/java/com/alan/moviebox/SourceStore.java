@@ -76,6 +76,25 @@ public class SourceStore {
         return removed;
     }
 
+    // ---------- 当前使用的接口（已经识别出来、可以直接读片子的那个地址） ----------
+
+    public synchronized void setActive(String name, String api) {
+        sp.edit().putString("activeName", name).putString("activeApi", api).apply();
+    }
+
+    public synchronized String getActiveApi() {
+        String s = sp.getString("activeApi", "");
+        return s.isEmpty() ? null : s;
+    }
+
+    public synchronized String getActiveName() {
+        return sp.getString("activeName", "");
+    }
+
+    public synchronized void clearActive() {
+        sp.edit().remove("activeName").remove("activeApi").apply();
+    }
+
     private void save(List<Source> all) {
         try {
             JSONArray a = new JSONArray();
