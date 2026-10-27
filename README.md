@@ -58,3 +58,13 @@
 - 豆瓣热播榜这类条目（`vod_id` 以 `msearch:` 开头）不是真正的片子，点它会直接用片名去搜索。
 - type 1 用 `ac=detail&wd=关键词`，type 3 调用爬虫的 `searchContent`。
 - 首页栏目标题后面会显示当前使用的站点名。
+
+## YouTube Stage 3 (initial integration)
+
+- Adds a YouTube entry to the TV home navigation.
+- Uses the official YouTube Data API v3 search endpoint. A user-provided API key is required; create it in Google Cloud Console and enable YouTube Data API v3.
+- Plays videos through YouTube's official embedded player in a WebView.
+- Saves up to 50 recently selected videos in local app storage as a local viewing history.
+- YouTube account sign-in, subscriptions, and cloud history sync are not implemented in this initial version. They require a properly configured Google OAuth client and separate policy/flow validation; the embedded player alone does not provide these features.
+
+The source was statically reviewed and the ZIP archive was integrity-checked. Android compilation and TV-device playback have not been verified in this environment.

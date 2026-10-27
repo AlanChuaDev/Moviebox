@@ -39,7 +39,7 @@ public class MainActivity extends Activity {
     static final int C_MUTED = 0xFFB9B4AA;
     static final int C_DARK = 0xFF08090B;
 
-    static final String[] TABS = {"主页", "电影", "剧集", "综艺", "搜索"};
+    static final String[] TABS = {"主页", "电影", "剧集", "综艺", "YouTube", "搜索"};
     static final int DATA_TABS = 4;  // 前 4 个标签有数据，「搜索」只是按钮
     static final String[] SHELF_LABELS = {"热播推荐", "热门电影 TOP 10", "热播剧集 TOP 10", "热播综艺 TOP 10"};
 
@@ -212,7 +212,8 @@ public class MainActivity extends Activity {
                 paintTabs();
             });
             t.setOnClickListener(v -> {
-                if (n == DATA_TABS) SearchActivity.start(this, "");
+                if (n == DATA_TABS) startActivity(new Intent(this, YoutubeActivity.class));
+            else if (n == DATA_TABS + 1) SearchActivity.start(this, "");
             });
             bar.addView(t, lp(-2, -2, i == 0 ? 28 : 0, 0));
             tabViews[i] = t;
