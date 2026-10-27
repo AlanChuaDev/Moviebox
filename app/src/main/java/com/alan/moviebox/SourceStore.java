@@ -122,6 +122,64 @@ public class SourceStore {
         return out;
     }
 
+    // ---------- 屏蔽的站点：搜索时不再搜它，也不再显示它的结果 ----------
+
+    // 返回的 Option：name 是屏蔽时记下的站点名，url 是站点的 spec（和站点池里的一致）
+    public synchronized List<VodApi.Option> getBlocked() {
+        List<VodApi.Option> out = new ArrayList<>();
+        try {
+            JSONArray a = new JSONArray(sp.getString("blocked", "[]"));
+            for (int i = 0; i < a.length(); i++) {
+                JSONObject j = a.getJSONObject(i);
+                out.add(new VodApi.Option(j.optString("name"), j.optString("spec")));
+            }
+        } catch (Exception e) {
+            // 数据损坏时当作空
+        }
+        return out;
+    }
+
+    public synchronized boolean isBlocked(String spec) {
+        for (VodApi.Option o : getBlocked()) {
+            if (o.url.equals(spec)) return true;
+        }
+        return false;
+    }
+
+    public synchronized void block(String name, String spec) {
+        if (isBlocked(spec)) return;
+        List<VodApi.Option> all = getBlocked();
+        all.add(new VodApi.Option(name, spec));
+        saveBlocked(all);
+    }
+
+    public synchronized void unblock(String spec) {
+        List<VodApi.Option> all = getBlocked();
+        boolean changed = false;
+        for (int i = all.size() - 1; i >= 0; i--) {
+            if (all.get(i).url.equals(spec)) {
+                all.remove(i);
+                changed = true;
+            }
+        }
+        if (changed) saveBlocked(all);
+    }
+
+    private void saveBlocked(List<VodApi.Option> all) {
+        try {
+            JSONArray a = new JSONArray();
+            for (VodApi.Option o : all) {
+                JSONObject j = new JSONObject();
+                j.put("name", o.name);
+                j.put("spec", o.url);
+                a.put(j);
+            }
+            sp.edit().putString("blocked", a.toString()).apply();
+        } catch (Exception e) {
+            // 写入失败就保留旧的
+        }
+    }
+
     public synchronized void clearActive() {
         sp.edit().remove("activeName").remove("activeApi").apply();
     }
