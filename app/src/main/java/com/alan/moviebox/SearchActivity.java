@@ -1,11 +1,13 @@
 package com.alan.moviebox;
 
+import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.Gravity;
+import android.view.View;
 import android.view.KeyEvent;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
@@ -17,8 +19,10 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -33,15 +37,18 @@ public class SearchActivity extends UiActivity {
 
     SourceStore store;
     EditText input;
-    TextView statusV, urlText, searchBtn;
+    TextView statusV, urlText, searchBtn, blockedBtn;
     ImageView qrView;
-    LinearLayout grid, curRow;
+    LinearLayout grid;
     ConfigServer server;
 
     int searchToken = 0;
-    int totalSites, doneSites, hitCount, rowCount;
+    int totalSites, doneSites, hitCount;
     String curKw = "";
     final Set<String> seen = new HashSet<>();
+    List<VodApi.Option> curSites = new ArrayList<>();            // 这一次搜索涉及的站点
+    final Set<String> doneSpecs = new HashSet<>();               // 已经返回结果的站点
+    final Map<String, Integer> siteHits = new HashMap<>();       // 每个站点显示了几条
 
     // 从任何页面打开搜索页；keyword 不为空就直接开始搜
     public static void start(Context c, String keyword) {
@@ -96,6 +103,17 @@ public class SearchActivity extends UiActivity {
         statusV = tv("输入片名后，在配置里所有可搜索的站点中一起搜索。", 15, MainActivity.C_MUTED, false);
         statusV.setLineSpacing(0, 1.3f);
         root.addView(statusV, at(64, 250, 300, -2));
+
+        blockedBtn = tv("", 18, MainActivity.C_TEXT, false);
+        blockedBtn.setGravity(Gravity.CENTER);
+        blockedBtn.setPadding(px(20), px(8), px(20), px(8));
+        blockedBtn.setFocusable(true);
+        blockedBtn.setClickable(true);
+        blockedBtn.setBackground(box(0x29F5F1EA, 8, false));
+        blockedBtn.setOnFocusChangeListener((v, has) -> blockedBtn.setBackground(box(has ? 0x4DF5F1EA : 0x29F5F1EA, 8, has)));
+        blockedBtn.setOnClickListener(v -> showBlockedDialog());
+        root.addView(blockedBtn, at(64, 346, -2, -2));
+        refreshBlockedBtn();
 
         qrView = new ImageView(this);
         qrView.setBackground(box(0xFFFFFFFF, 10, false));
@@ -188,14 +206,16 @@ public class SearchActivity extends UiActivity {
             input.setSelection(kw.length());
         }
         grid.removeAllViews();
-        curRow = null;
-        rowCount = 0;
         hitCount = 0;
         doneSites = 0;
         seen.clear();
+        doneSpecs.clear();
+        siteHits.clear();
 
         List<VodApi.Option> sites = sitesToSearch();
+        curSites = sites;
         totalSites = sites.size();
+        refreshBlockedBtn();
         if (sites.isEmpty()) {
             statusV.setText("还没有选择接口，请先在设置里添加并选择一个接口。");
             return;
@@ -217,69 +237,160 @@ public class SearchActivity extends UiActivity {
         }
     }
 
-    // 要搜的站点：当前站点排第一，后面是同一份配置里其他标明可搜索的站点
+    // 要搜的站点：当前站点排第一，后面是同一份配置里其他标明可搜索的站点；被屏蔽的站点不搜
     List<VodApi.Option> sitesToSearch() {
         List<VodApi.Option> out = new ArrayList<>();
         String active = store.getActiveApi();
-        if (active != null) out.add(new VodApi.Option(store.getActiveName(), active));
+        if (active != null && !store.isBlocked(active)) {
+            out.add(new VodApi.Option(store.getActiveName(), active));
+        }
         for (VodApi.Option o : store.getPool()) {
             if (o.url.equals(active)) continue;
+            if (store.isBlocked(o.url)) continue;
             if (SiteSpec.parse(o.url).searchable) out.add(o);
         }
         return out;
     }
 
+    static String cleanName(String name) {
+        return name == null ? "" : name.replace("  [爬虫]", "").trim();
+    }
+
     void onSiteDone(int my, VodApi.Option o, List<Movie> res) {
         if (my != searchToken || isFinishing()) return;
         doneSites++;
-        if (res != null) {
-            String site = o.name.replace("  [爬虫]", "");
-            int n = 0;
+        doneSpecs.add(o.url);
+        // 搜索途中被屏蔽的站点，结果直接丢掉
+        if (res != null && !store.isBlocked(o.url)) {
+            List<Movie> keep = new ArrayList<>();
             for (Movie m : res) {
-                if (n >= MAX_PER_SITE || hitCount >= MAX_TOTAL) break;
+                if (keep.size() >= MAX_PER_SITE || hitCount + keep.size() >= MAX_TOTAL) break;
                 if (!seen.add(o.url + "|" + m.vodId + "|" + m.title)) continue;
-                addHit(m, o.url, site);
-                n++;
+                keep.add(m);
             }
+            if (!keep.isEmpty()) addSection(o, cleanName(o.name), keep);
         }
         updateStatus();
     }
 
     void updateStatus() {
+        String hint = "\n选中站点名按确定键，可以屏蔽这个站点。";
         if (doneSites < totalSites) {
             statusV.setText("正在搜索「" + curKw + "」…\n已搜 " + doneSites + " / " + totalSites
                     + " 个站点，找到 " + hitCount + " 个结果");
         } else if (hitCount == 0) {
             statusV.setText("没有找到「" + curKw + "」的结果（已搜 " + totalSites + " 个站点）。");
         } else {
-            statusV.setText("搜索完成：找到 " + hitCount + " 个结果（" + totalSites + " 个站点）。");
+            statusV.setText("搜索完成：找到 " + hitCount + " 个结果（" + totalSites + " 个站点）。" + hint);
         }
     }
 
-    void addHit(final Movie m, final String spec, String site) {
-        if (curRow == null || rowCount == COLS) {
-            curRow = new LinearLayout(this);
-            curRow.setOrientation(LinearLayout.HORIZONTAL);
-            curRow.setClipChildren(false);
-            grid.addView(curRow, lp(-2, -2, 0, grid.getChildCount() == 0 ? 0 : 18));
-            rowCount = 0;
+    // 一个站点的结果：一行站点名标题 + 下面一排排海报。每个站点各占一块，不再混在一起。
+    void addSection(final VodApi.Option o, final String site, List<Movie> list) {
+        TextView head = tv(site + "  ·  " + list.size() + " 个结果", 18, MainActivity.C_TEXT, true);
+        head.setPadding(px(10), px(6), px(10), px(6));
+        head.setFocusable(true);
+        head.setClickable(true);
+        head.setTag(o.url);
+        head.setOnFocusChangeListener((v, has) -> head.setBackground(has ? box(0x4DF5F1EA, 6, true) : null));
+        head.setOnClickListener(v -> confirmBlock(o, site));
+        grid.addView(head, lp(-2, -2, 0, grid.getChildCount() == 0 ? 0 : 26));
+
+        LinearLayout row = null;
+        int inRow = 0;
+        for (final Movie m : list) {
+            if (row == null || inRow == COLS) {
+                row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setClipChildren(false);
+                row.setTag(o.url);
+                grid.addView(row, lp(-2, -2, 0, 12));
+                inRow = 0;
+            }
+            LinearLayout item = new LinearLayout(this);
+            item.setOrientation(LinearLayout.VERTICAL);
+            item.setClipChildren(false);
+
+            PosterView pv = new PosterView(this, m, u * 130f / 112f);
+            pv.setOnClickListener(v -> DetailActivity.start(this, o.url, m, false));
+            pv.setOnLongClickListener(v -> {
+                confirmBlock(o, site);
+                return true;
+            });
+            item.addView(pv, new LinearLayout.LayoutParams(px(130), px(195)));
+
+            row.addView(item, lp(-2, -2, inRow == 0 ? 0 : 24, 0));
+            inRow++;
+            hitCount++;
         }
-        LinearLayout item = new LinearLayout(this);
-        item.setOrientation(LinearLayout.VERTICAL);
-        item.setClipChildren(false);
+        siteHits.put(o.url, list.size());
+    }
 
-        PosterView pv = new PosterView(this, m, u * 130f / 112f);
-        pv.setOnClickListener(v -> DetailActivity.start(this, spec, m, false));
-        item.addView(pv, new LinearLayout.LayoutParams(px(130), px(195)));
+    // ---------- 屏蔽站点 ----------
 
-        TextView label = tv(site, 13, MainActivity.C_MUTED, false);
-        label.setSingleLine(true);
-        label.setEllipsize(TextUtils.TruncateAt.END);
-        item.addView(label, lp(px(130), -2, 0, 6));
+    void confirmBlock(final VodApi.Option o, final String site) {
+        new AlertDialog.Builder(this)
+                .setTitle("屏蔽「" + site + "」？")
+                .setMessage("以后搜索不再搜这个站点，也不再显示它的结果。\n想恢复时，在搜索页左边的「已屏蔽」里选回来。")
+                .setPositiveButton("屏蔽", (d, w) -> {
+                    store.block(site, o.url);
+                    removeSection(o.url);
+                    refreshBlockedBtn();
+                    toast("已屏蔽「" + site + "」");
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
 
-        curRow.addView(item, lp(-2, -2, rowCount == 0 ? 0 : 24, 0));
-        rowCount++;
-        hitCount++;
+    // 把当前结果里这个站点的那一块去掉，并重新计数
+    void removeSection(String spec) {
+        for (int i = grid.getChildCount() - 1; i >= 0; i--) {
+            if (spec.equals(grid.getChildAt(i).getTag())) grid.removeViewAt(i);
+        }
+        Integer n = siteHits.remove(spec);
+        if (n != null) hitCount -= n;
+        // 站点数也跟着变
+        int total = 0, done = 0;
+        for (VodApi.Option o : curSites) {
+            if (store.isBlocked(o.url)) continue;
+            total++;
+            if (doneSpecs.contains(o.url)) done++;
+        }
+        totalSites = total;
+        doneSites = done;
+        // 去掉第一块后，新的第一块顶部不留空
+        if (grid.getChildCount() > 0) {
+            View first = grid.getChildAt(0);
+            if (first.getLayoutParams() instanceof LinearLayout.LayoutParams) {
+                ((LinearLayout.LayoutParams) first.getLayoutParams()).topMargin = 0;
+            }
+        }
+        updateStatus();
+    }
+
+    void refreshBlockedBtn() {
+        int n = store.getBlocked().size();
+        blockedBtn.setText(n == 0 ? "已屏蔽：无" : "已屏蔽 " + n + " 个站点（选中恢复）");
+    }
+
+    void showBlockedDialog() {
+        final List<VodApi.Option> list = store.getBlocked();
+        if (list.isEmpty()) {
+            toast("还没有屏蔽任何站点");
+            return;
+        }
+        String[] names = new String[list.size()];
+        for (int i = 0; i < names.length; i++) names[i] = "恢复：" + cleanName(list.get(i).name);
+        new AlertDialog.Builder(this)
+                .setTitle("已屏蔽的站点")
+                .setItems(names, (d, which) -> {
+                    VodApi.Option o = list.get(which);
+                    store.unblock(o.url);
+                    refreshBlockedBtn();
+                    toast("已恢复「" + cleanName(o.name) + "」，下次搜索会重新搜它");
+                })
+                .setNegativeButton("关闭", null)
+                .show();
     }
 
     // ---------- 控件 ----------
