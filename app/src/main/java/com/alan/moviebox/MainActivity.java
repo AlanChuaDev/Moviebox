@@ -1,6 +1,8 @@
 package com.alan.moviebox;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -235,25 +237,28 @@ public class MainActivity extends Activity {
             String emptyMsg = null;
             String error = null;
             try {
+                SiteSpec spec = SiteSpec.parse(api);
+                Context app = getApplicationContext();
                 VodApi.Page page;
                 if (n == 0) {
-                    page = VodApi.fetch(api, null);
+                    page = Catalog.home(app, spec);
                     cats = page.categories;
                 } else {
-                    if (cats == null) cats = VodApi.fetch(api, null).categories;
+                    if (cats == null) cats = Catalog.home(app, spec).categories;
                     String typeId = VodApi.matchCategory(cats, n);
                     if (typeId == null) {
                         page = new VodApi.Page();
                         emptyMsg = "这个接口里没有「" + TABS[n] + "」分类";
                     } else {
-                        page = VodApi.fetch(api, typeId);
+                        page = Catalog.category(app, spec, typeId);
                     }
                 }
                 movies = page.movies;
                 if (movies.isEmpty() && emptyMsg == null) emptyMsg = "这个分类里暂时没有内容";
-            } catch (Exception e) {
+            } catch (Throwable e) {
+                // 爬虫 jar 出问题时常常是 Error（比如缺类），所以这里连 Error 一起接住，把原因显示出来
                 movies = null;
-                error = e.getMessage() == null ? e.toString() : e.getMessage();
+                error = (e instanceof Exception && e.getMessage() != null) ? e.getMessage() : e.toString();
             }
 
             final List<Movie> result = movies;
@@ -262,8 +267,12 @@ public class MainActivity extends Activity {
             Net.MAIN.post(() -> {
                 if (!api.equals(store.getActiveApi())) return;  // 读的过程中换了接口，这批数据作废
                 if (result == null) {
-                    toast("加载失败：" + err);
                     if (curTab == n) applyList(SampleData.forTab(n), "加载失败，显示的是示例数据");
+                    if (!isFinishing()) {
+                        // 用对话框显示，方便截图发给我排查
+                        new AlertDialog.Builder(this).setTitle("加载失败").setMessage(err)
+                                .setPositiveButton("知道了", null).show();
+                    }
                     return;
                 }
                 cache.put(n, result);

@@ -28,7 +28,12 @@
 - 支持 **type 1**（苹果CMS 的 JSON 接口，`.../api.php/provide/vod/` 这种）。
 - 添加的地址可以是：接口本身、影视仓那种站点配置（`sites`）、或线路索引（`urls`）。
   选中后程序会自动识别：线路索引先选线路，再从里面选一个 type 1 的站点。
-- type 3（要爬虫 jar / js 才能运行的站点）暂时不支持。
+- 支持 **type 3 中用 jar 的爬虫站点**（`api` 是 `csp_` 开头）：运行时下载配置里的 `spider` jar，
+  用 `SpiderRuntime.java` 加载，再通过 `Catalog.java` 调用爬虫的首页 / 分类方法。
+  `com/github/catvod/crawler/` 下的 `Spider`、`SpiderDebug` 是影视仓约定的基类，包名和签名不能改。
+  这一块是最小验证，只读首页和分类；详情、搜索、播放还没做。
+- 用 js / py 脚本的 type 3 站点暂时不支持。
+- 加载失败时首页会弹出对话框，写明具体原因（比如缺某个类），方便排查。
 - 首页的「电影 / 剧集 / 综艺」标签，按接口返回的分类名字自动对应。
 - 相关文件：`VodApi.java`（读取和解析）、`Net.java`（联网）、`Images.java`（海报图片）。
 

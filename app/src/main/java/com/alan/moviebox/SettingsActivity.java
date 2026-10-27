@@ -290,7 +290,7 @@ public class SettingsActivity extends Activity {
     void resolveAndPick(final String name, final String url, final int depth) {
         Net.POOL.execute(() -> {
             try {
-                final VodApi.Resolved r = VodApi.resolve(Net.getText(url));
+                final VodApi.Resolved r = VodApi.resolve(Net.getText(url), url);
                 Net.MAIN.post(() -> onResolved(name, url, r, depth));
             } catch (final Exception e) {
                 final String m = e.getMessage() == null ? e.toString() : e.getMessage();
@@ -302,7 +302,7 @@ public class SettingsActivity extends Activity {
     void onResolved(String name, String url, VodApi.Resolved r, int depth) {
         if (isFinishing()) return;
         if ("direct".equals(r.kind)) {
-            choose(name, url);
+            choose(name, new SiteSpec(1, url, "", "").toString());
         } else if ("lines".equals(r.kind)) {
             if (depth >= 2 || r.options.isEmpty()) {
                 showInfo("这里面没有可用的线路。");
@@ -314,11 +314,14 @@ public class SettingsActivity extends Activity {
             });
         } else {
             if (r.options.isEmpty()) {
-                showInfo("这条线路共 " + r.totalSites + " 个站点，但没有 type 1 的站点"
-                        + "（需要爬虫插件的站点暂时不支持）。请换一条线路，或添加你自己的接口地址。");
+                showInfo("这条线路共 " + r.totalSites + " 个站点，但暂时没有能用的"
+                        + "（支持 type 1 接口站点，和用 jar 的 type 3 爬虫站点；js、py 脚本站点还不支持）。"
+                        + "请换一条线路，或添加你自己的接口地址。");
                 return;
             }
-            showChoice("选择站点（共 " + r.options.size() + " 个可用）", r.options, o -> choose(o.name, o.url));
+            String title = "选择站点（共 " + r.options.size() + " 个可用"
+                    + (r.unsupported > 0 ? "，另有 " + r.unsupported + " 个暂不支持" : "") + "）";
+            showChoice(title, r.options, o -> choose(o.name, o.url));
         }
     }
 
