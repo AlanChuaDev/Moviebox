@@ -9,8 +9,8 @@ public class Movie {
     public final String meta;    // 类型、年份、地区等一行信息
     public final String desc;    // 简介
     public final String poster;  // 海报图片地址（示例数据没有，为 null）
-    public final String vodId;   // 接口里的影片编号（第 2 阶段做详情页要用）
-    public final String playUrl; // 接口里的播放地址串（第 2 阶段做播放器要用）
+    public final String vodId;   // 接口里的影片编号（详情页用它去读详情）
+    public final String playUrl; // 接口里的播放地址串（type 1 读详情失败时，详情页用它兜底）
 
     public Movie(String title, String rating, String tag, int colorIdx, String meta, String desc) {
         this(title, rating, tag, colorIdx, meta, desc, null, "", "");

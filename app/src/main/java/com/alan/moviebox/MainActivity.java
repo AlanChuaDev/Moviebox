@@ -160,6 +160,27 @@ public class MainActivity extends Activity {
         Toast.makeText(this, s, Toast.LENGTH_SHORT).show();
     }
 
+    // 打开详情页。autoplay 为 true 时，详情读完后直接开始播放第一集。
+    void openDetail(Movie m, boolean autoplay) {
+        String api = store.getActiveApi();
+        if (api == null || m.vodId == null || m.vodId.isEmpty()) {
+            toast("这是示例数据，请先在设置里选一个接口");
+            return;
+        }
+        Intent in = new Intent(this, DetailActivity.class);
+        in.putExtra("spec", api);
+        in.putExtra("vodId", m.vodId);
+        in.putExtra("title", m.title);
+        in.putExtra("poster", m.poster == null ? "" : m.poster);
+        in.putExtra("meta", m.meta);
+        in.putExtra("desc", m.desc);
+        in.putExtra("rating", m.rating);
+        in.putExtra("color", m.colorIdx);
+        in.putExtra("playUrl", m.playUrl == null ? "" : m.playUrl);
+        in.putExtra("autoplay", autoplay);
+        startActivity(in);
+    }
+
     // ---------- 顶部：MOVIEBOX + 标签 + 时钟 ----------
 
     void buildHeader() {
@@ -357,9 +378,7 @@ public class MainActivity extends Activity {
             b.animate().scaleX(s).scaleY(s).setDuration(120).start();
         });
         b.setOnClickListener(v -> {
-            String name = current != null ? current.title : "";
-            toast(primary ? "第 2 阶段会在这里播放「" + name + "」"
-                    : "第 2 阶段会在这里打开「" + name + "」的详情页");
+            if (current != null) openDetail(current, primary);  // 「播放」进去后直接开始播
         });
         return b;
     }
@@ -427,7 +446,7 @@ public class MainActivity extends Activity {
             pv.setOnFocusChangeListener((v, has) -> {
                 if (has) showMovie(m);
             });
-            pv.setOnClickListener(v -> toast("第 2 阶段会在这里打开「" + m.title + "」的详情页"));
+            pv.setOnClickListener(v -> openDetail(m, false));
             item.addView(pv, new LinearLayout.LayoutParams(px(112), px(168)));
 
             LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(-2, -2);

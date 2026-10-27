@@ -27,6 +27,37 @@ public class VodApi {
         public final List<Category> categories = new ArrayList<>();
     }
 
+    // 一集（或一个播放地址）。url 在 type 1 里就是真实地址，在 type 3 里是要交给爬虫换真实地址的编号。
+    public static class Ep {
+        public final String name;
+        public final String url;
+
+        public Ep(String name, String url) {
+            this.name = name;
+            this.url = url;
+        }
+    }
+
+    // 一条播放线路（播放源），里面有很多集
+    public static class Line {
+        public final String name;
+        public final List<Ep> eps = new ArrayList<>();
+
+        public Line(String name) {
+            this.name = name;
+        }
+    }
+
+    // 一部片的详细信息
+    public static class Detail {
+        public String title = "";
+        public String meta = "";
+        public String actor = "";
+        public String director = "";
+        public String desc = "";
+        public final List<Line> lines = new ArrayList<>();
+    }
+
     // 配置里的一个选项。线路索引里：url 是这条线路的配置地址；
     // 站点配置里：url 是 SiteSpec 转成的文字，选中后直接存为当前接口。
     public static class Option {
@@ -168,6 +199,60 @@ public class VodApi {
         return page;
     }
 
+    // ---------- 详情 ----------
+
+    // 解析详情 JSON（和列表一样是 list 数组）。wantedId 用来在 list 里挑出对应的那一部；
+    // 挑不到就取第一部（有些接口不管传什么编号，返回的都是同一批）
+    public static Detail parseDetail(JSONObject o, String base, String wantedId) throws Exception {
+        JSONArray list = o.optJSONArray("list");
+        if (list == null || list.length() == 0) throw new Exception("没有读到这部片子的详情");
+        JSONObject v = null;
+        for (int i = 0; i < list.length(); i++) {
+            JSONObject c = list.optJSONObject(i);
+            if (c != null && wantedId != null && wantedId.equals(str(c, "vod_id"))) {
+                v = c;
+                break;
+            }
+        }
+        if (v == null) v = list.optJSONObject(0);
+        if (v == null) throw new Exception("没有读到这部片子的详情");
+
+        Detail d = new Detail();
+        d.title = str(v, "vod_name");
+        d.meta = metaOf(v);
+        d.actor = clean(str(v, "vod_actor"));
+        d.director = clean(str(v, "vod_director"));
+        d.desc = clean(str(v, "vod_content"));
+        d.lines.addAll(parseLines(str(v, "vod_play_from"), str(v, "vod_play_url")));
+        return d;
+    }
+
+    // 播放线路和选集的写法：线路之间用 $$$ 隔开，一条线路里每集用 # 隔开，每集是「名字$地址」
+    public static List<Line> parseLines(String from, String urls) {
+        List<Line> out = new ArrayList<>();
+        if (urls == null || urls.trim().isEmpty()) return out;
+        String[] froms = from == null ? new String[0] : from.split("\\$\\$\\$");
+        String[] groups = urls.split("\\$\\$\\$");
+        for (int i = 0; i < groups.length; i++) {
+            String name = i < froms.length ? froms[i].trim() : "";
+            if (name.isEmpty()) name = "线路" + (i + 1);
+            Line line = new Line(name);
+            String[] items = groups[i].split("#");
+            for (String item : items) {
+                String it = item.trim();
+                if (it.isEmpty()) continue;
+                int p = it.indexOf('$');
+                String epName = p >= 0 ? it.substring(0, p).trim() : "";
+                String epUrl = p >= 0 ? it.substring(p + 1).trim() : it;
+                if (epUrl.isEmpty()) continue;
+                if (epName.isEmpty()) epName = "第" + (line.eps.size() + 1) + "集";
+                line.eps.add(new Ep(epName, epUrl));
+            }
+            if (!line.eps.isEmpty()) out.add(line);
+        }
+        return out;
+    }
+
     // 「电影」「剧集」「综艺」三个标签，在接口的分类里按名字找对应的分类编号；找不到返回 null
     public static String matchCategory(List<Category> cats, int tab) {
         String[][] keys = {{}, {"电影", "影片"}, {"剧"}, {"综艺"}};
@@ -187,6 +272,16 @@ public class VodApi {
         String score = str(v, "vod_score");
         if (score.equals("0") || score.equals("0.0")) score = "";
 
+        String desc = clean(str(v, "vod_content"));
+        if (desc.isEmpty()) desc = "暂无简介";
+
+        int color = Math.abs(name.hashCode() % 10);  // 没有主题色时，按片名固定挑一个
+        return new Movie(name, score, str(v, "vod_remarks"), color, metaOf(v), desc,
+                absUrl(base, str(v, "vod_pic")), str(v, "vod_id"), str(v, "vod_play_url"));
+    }
+
+    // 类型、年份、地区、备注，用 · 连成一行
+    private static String metaOf(JSONObject v) {
         StringBuilder meta = new StringBuilder();
         for (String k : new String[]{"type_name", "vod_year", "vod_area", "vod_remarks"}) {
             String s = str(v, k);
@@ -194,13 +289,7 @@ public class VodApi {
             if (meta.length() > 0) meta.append(" · ");
             meta.append(s);
         }
-
-        String desc = clean(str(v, "vod_content"));
-        if (desc.isEmpty()) desc = "暂无简介";
-
-        int color = Math.abs(name.hashCode() % 10);  // 没有主题色时，按片名固定挑一个
-        return new Movie(name, score, str(v, "vod_remarks"), color, meta.toString(), desc,
-                absUrl(base, str(v, "vod_pic")), str(v, "vod_id"), str(v, "vod_play_url"));
+        return meta.toString();
     }
 
     // JSON 里的 null 在 optString 里会变成字符串 "null"，这里统一处理成空字符串

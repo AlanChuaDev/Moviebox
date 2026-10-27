@@ -29,4 +29,8 @@ dependencies {
     implementation 'com.squareup.okhttp3:okhttp:3.12.13'
     implementation 'org.jsoup:jsoup:1.15.4'
     implementation 'com.google.code.gson:gson:2.8.9'
+
+    // 播放器（ExoPlayer）：本体 + m3u8（HLS）支持
+    implementation 'androidx.media3:media3-exoplayer:1.2.1'
+    implementation 'androidx.media3:media3-exoplayer-hls:1.2.1'
 }
