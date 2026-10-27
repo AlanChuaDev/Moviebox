@@ -4,15 +4,12 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.SurfaceView;
 import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
-import android.app.AlertDialog;
-import androidx.media3.ui.PlayerView;
-import androidx.media3.ui.AspectRatioFrameLayout;
-import androidx.media3.ui.TrackSelectionDialogBuilder;
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
@@ -38,8 +35,7 @@ public class PlayerActivity extends UiActivity {
     int index;
 
     ExoPlayer player;
-    PlayerView surface;
-    int resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT;
+    SurfaceView surface;
     ProgressBar spinner, bar;
     TextView msgV, titleV, timeV;
     View topBar, bottomBar;
@@ -80,10 +76,7 @@ public class PlayerActivity extends UiActivity {
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(0xFF000000);
 
-        surface = new PlayerView(this);
-        surface.setUseController(false);
-        surface.setResizeMode(resizeMode);
-        surface.setFocusable(false);
+        surface = new SurfaceView(this);
         root.addView(surface, new FrameLayout.LayoutParams(-1, -1));
 
         spinner = new ProgressBar(this);
@@ -120,7 +113,7 @@ public class PlayerActivity extends UiActivity {
         bottom.addView(bar, new LinearLayout.LayoutParams(-1, px(8)));
         timeV = tv("", 18, MainActivity.C_TEXT, false);
         bottom.addView(timeV, lp(-2, -2, 0, 10));
-        TextView hint = tv("确定 暂停 / 继续（长按打开设置）    左右 快退 / 快进    上下 换集    菜单键：画面 / 音轨 / 字幕 / 速度",
+        TextView hint = tv("确定 暂停 / 继续    左右 快退 / 快进    上下 换集    返回 退出",
                 15, MainActivity.C_MUTED, false);
         bottom.addView(hint, lp(-2, -2, 0, 6));
         bottomBar = bottom;
@@ -161,7 +154,6 @@ public class PlayerActivity extends UiActivity {
         token++;
         if (player != null) {
             resumePos = player.getCurrentPosition();
-            if (surface != null) surface.setPlayer(null);
             player.release();
             player = null;
         }
@@ -170,7 +162,7 @@ public class PlayerActivity extends UiActivity {
     void initPlayer() {
         if (player != null) return;
         player = new ExoPlayer.Builder(this).build();
-        surface.setPlayer(player);
+        player.setVideoSurfaceView(surface);
         player.addListener(new Player.Listener() {
             @Override
             public void onPlaybackStateChanged(int state) {
@@ -253,9 +245,7 @@ public class PlayerActivity extends UiActivity {
                 .setDefaultRequestProperties(hdr);
 
         MediaItem.Builder mb = new MediaItem.Builder().setUri(info.url);
-        String lowerUrl = info.url == null ? "" : info.url.toLowerCase(Locale.ROOT);
-        if (lowerUrl.contains(".m3u8")) mb.setMimeType(MimeTypes.APPLICATION_M3U8);
-        else if (lowerUrl.contains(".mpd")) mb.setMimeType(MimeTypes.APPLICATION_MPD);
+        if (info.url.contains(".m3u8")) mb.setMimeType(MimeTypes.APPLICATION_M3U8);
 
         msgV.setVisibility(View.GONE);
         player.setMediaSource(new DefaultMediaSourceFactory(f).createMediaSource(mb.build()));
@@ -273,17 +263,11 @@ public class PlayerActivity extends UiActivity {
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (player == null) return super.onKeyDown(keyCode, event);
         switch (keyCode) {
-            case KeyEvent.KEYCODE_MENU:
-            case KeyEvent.KEYCODE_SETTINGS:
-                showPlaybackOptions();
-                return true;
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
             case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
             case KeyEvent.KEYCODE_SPACE:
-                if (event.getRepeatCount() == 2) {
-                    showPlaybackOptions();
-                } else if (event.getRepeatCount() == 0) {
+                if (event.getRepeatCount() == 0) {
                     player.setPlayWhenReady(!player.getPlayWhenReady());
                     showOverlay();
                     updateProgress();
@@ -321,44 +305,6 @@ public class PlayerActivity extends UiActivity {
                 return true;
             default:
                 return super.onKeyDown(keyCode, event);
-        }
-    }
-
-    void showPlaybackOptions() {
-        if (player == null) return;
-        final String[] options = {"画面尺寸：" + resizeModeName(), "音轨选择", "字幕选择", "播放速度", "播放信息"};
-        new AlertDialog.Builder(this).setTitle("播放器设置").setItems(options, (dialog, which) -> {
-            if (which == 0) {
-                resizeMode = (resizeMode + 1) % 4;
-                if (surface != null) surface.setResizeMode(resizeMode);
-                toast("画面模式：" + resizeModeName());
-                showOverlay();
-            } else if (which == 1) {
-                new TrackSelectionDialogBuilder(this, "选择音轨", player, C.TRACK_TYPE_AUDIO).build().show();
-            } else if (which == 2) {
-                new TrackSelectionDialogBuilder(this, "选择字幕", player, C.TRACK_TYPE_TEXT).build().show();
-            } else if (which == 3) {
-                final float[] speeds = {0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f};
-                final String[] labels = {"0.5×", "0.75×", "正常 1.0×", "1.25×", "1.5×", "2.0×"};
-                new AlertDialog.Builder(this).setTitle("播放速度").setItems(labels, (d, i) -> {
-                    player.setPlaybackSpeed(speeds[i]); toast("播放速度：" + labels[i]); showOverlay();
-                }).show();
-            } else {
-                String format = "未知";
-                if (player.getCurrentTracks() != null) format = "已加载音视频轨道";
-                new AlertDialog.Builder(this).setTitle("播放信息").setMessage("画面模式：" + resizeModeName() + "\n播放速度：" + player.getPlaybackParameters().speed + "×\n" + format + "\n\n支持情况还取决于视频源、编码格式、设备解码能力和 DRM 限制。")
-                        .setPositiveButton("确定", null).show();
-            }
-        }).setNegativeButton("关闭", null).show();
-    }
-
-    String resizeModeName() {
-        switch (resizeMode) {
-            case AspectRatioFrameLayout.RESIZE_MODE_FIT: return "适应画面";
-            case AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH: return "固定宽度";
-            case AspectRatioFrameLayout.RESIZE_MODE_FIXED_HEIGHT: return "固定高度";
-            case AspectRatioFrameLayout.RESIZE_MODE_FILL: return "拉伸填满";
-            default: return "适应画面";
         }
     }
 
