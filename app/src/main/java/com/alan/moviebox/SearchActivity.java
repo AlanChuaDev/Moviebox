@@ -31,8 +31,8 @@ import java.util.concurrent.Executors;
 // 结果按海报墙显示，点一部进入它所属站点的详情页。
 public class SearchActivity extends UiActivity {
     static final int COLS = 5;
-    static final int MAX_PER_SITE = 20;
-    static final int MAX_TOTAL = 300;
+    static final int MAX_PER_SITE = 12;
+    static final int MAX_TOTAL = 180;
     static final ExecutorService SEARCH_POOL = Executors.newFixedThreadPool(5);
 
     SourceStore store;
