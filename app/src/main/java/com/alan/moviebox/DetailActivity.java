@@ -157,7 +157,7 @@ public class DetailActivity extends UiActivity {
             VodApi.Detail d = null;
             String err = null;
             try {
-                d = Catalog.detail(getApplicationContext(), spec, vodId);
+                d = Catalog.detail(getApplicationContext(), spec, vodId, title);
             } catch (Throwable e) {
                 err = errText(e);
             }

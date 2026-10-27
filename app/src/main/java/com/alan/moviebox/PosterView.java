@@ -30,7 +30,7 @@ public class PosterView extends View {
         setFocusable(true);
         setClickable(true);
         if (m.poster != null) {
-            Images.load(m.poster, Math.round(112 * u * 1.3f), b -> {
+            Images.load(c, m.poster, Math.round(112 * u * 1.3f), b -> {
                 bmp = b;
                 invalidate();
             });

@@ -75,6 +75,51 @@ public class Catalog {
 
     // 一部片的详细信息，包括播放线路和每一集
     public static VodApi.Detail detail(Context c, SiteSpec s, String vodId) throws Throwable {
+        return detail(c, s, vodId, "");
+    }
+
+    // 首次按首页条目的 ID 取详情；如果首页爬虫给的 ID 不完整或详情没有播放线路，
+    // 再按片名搜索一次，用搜索结果里的真实 ID 重试，避免首页条目点进去直接失败。
+    public static VodApi.Detail detail(Context c, SiteSpec s, String vodId, String title) throws Throwable {
+        Throwable firstError = null;
+        try {
+            VodApi.Detail d = detailById(c, s, vodId);
+            if (d != null && !d.lines.isEmpty()) return d;
+        } catch (Throwable e) {
+            firstError = e;
+        }
+
+        if (title != null && !title.trim().isEmpty()) {
+            try {
+                VodApi.Page found = search(c, s, title.trim());
+                Movie best = null;
+                for (Movie m : found.movies) {
+                    if (m.title.equalsIgnoreCase(title.trim()) && m.vodId != null && !m.vodId.isEmpty()) {
+                        best = m;
+                        break;
+                    }
+                }
+                if (best == null) {
+                    for (Movie m : found.movies) {
+                        if (m.vodId != null && !m.vodId.isEmpty()) { best = m; break; }
+                    }
+                }
+                if (best != null) {
+                    VodApi.Detail d = detailById(c, s, best.vodId);
+                    if (d != null && !d.lines.isEmpty()) return d;
+                    if (d != null) return d;
+                }
+            } catch (Throwable retryError) {
+                if (firstError == null) firstError = retryError;
+            }
+        }
+
+        if (firstError != null) throw firstError;
+        return detailById(c, s, vodId);
+    }
+
+    private static VodApi.Detail detailById(Context c, SiteSpec s, String vodId) throws Throwable {
+        if (vodId == null || vodId.trim().isEmpty()) throw new Exception("这个首页条目没有影片编号");
         JSONObject o;
         String base = null;
         if (!s.isSpider()) {

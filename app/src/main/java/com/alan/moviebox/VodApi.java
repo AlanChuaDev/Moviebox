@@ -211,7 +211,7 @@ public class VodApi {
         JSONObject v = null;
         for (int i = 0; i < list.length(); i++) {
             JSONObject c = list.optJSONObject(i);
-            if (c != null && wantedId != null && wantedId.equals(str(c, "vod_id"))) {
+            if (c != null && wantedId != null && wantedId.equals(first(c, "vod_id", "vodId", "id", "ids"))) {
                 v = c;
                 break;
             }
@@ -220,12 +220,13 @@ public class VodApi {
         if (v == null) throw new Exception("没有读到这部片子的详情");
 
         Detail d = new Detail();
-        d.title = str(v, "vod_name");
+        d.title = first(v, "vod_name", "name", "title", "vodName");
         d.meta = metaOf(v);
-        d.actor = clean(str(v, "vod_actor"));
-        d.director = clean(str(v, "vod_director"));
-        d.desc = clean(str(v, "vod_content"));
-        d.lines.addAll(parseLines(str(v, "vod_play_from"), str(v, "vod_play_url")));
+        d.actor = clean(first(v, "vod_actor", "actor", "actors"));
+        d.director = clean(first(v, "vod_director", "director"));
+        d.desc = clean(first(v, "vod_content", "content", "description", "desc", "vod_blurb"));
+        d.lines.addAll(parseLines(first(v, "vod_play_from", "playFrom", "play_from"),
+                first(v, "vod_play_url", "playUrl", "play_url")));
         return d;
     }
 
@@ -268,25 +269,43 @@ public class VodApi {
     }
 
     private static Movie toMovie(JSONObject v, String base) {
-        String name = str(v, "vod_name");
+        // TVBox/苹果 CMS/部分爬虫返回字段并不完全一致，主页和搜索统一兼容常见别名。
+        String name = first(v, "vod_name", "name", "title", "vodName");
         if (name.isEmpty()) return null;
 
-        String score = str(v, "vod_score");
+        String score = first(v, "vod_score", "score", "rating");
         if (score.equals("0") || score.equals("0.0")) score = "";
 
-        String desc = clean(str(v, "vod_content"));
+        String desc = clean(first(v, "vod_content", "content", "description", "desc", "vod_blurb"));
         if (desc.isEmpty()) desc = "暂无简介";
 
-        int color = Math.abs(name.hashCode() % 10);  // 没有主题色时，按片名固定挑一个
-        return new Movie(name, score, str(v, "vod_remarks"), color, metaOf(v), desc,
-                absUrl(base, str(v, "vod_pic")), str(v, "vod_id"), str(v, "vod_play_url"));
+        String posterRaw = first(v, "vod_pic", "vod_pic_thumb", "pic", "cover", "poster", "image", "img");
+        String id = first(v, "vod_id", "vodId", "id", "ids", "url");
+        String play = first(v, "vod_play_url", "playUrl", "play_url", "url");
+        int color = Math.abs(name.hashCode() % 10);
+        return new Movie(name, score, first(v, "vod_remarks", "remarks", "state", "note"), color,
+                metaOf(v), desc, absUrl(base, posterRaw), id, play);
+    }
+
+    private static String first(JSONObject o, String... keys) {
+        for (String key : keys) {
+            String value = str(o, key);
+            if (!value.isEmpty() && !"null".equalsIgnoreCase(value)) return value;
+        }
+        return "";
     }
 
     // 类型、年份、地区、备注，用 · 连成一行
     private static String metaOf(JSONObject v) {
         StringBuilder meta = new StringBuilder();
-        for (String k : new String[]{"type_name", "vod_year", "vod_area", "vod_remarks"}) {
-            String s = str(v, k);
+        String[][] fields = {
+                {"type_name", "type", "category"},
+                {"vod_year", "year", "release_year"},
+                {"vod_area", "area", "country"},
+                {"vod_remarks", "remarks", "state", "note"}
+        };
+        for (String[] aliases : fields) {
+            String s = first(v, aliases);
             if (s.isEmpty()) continue;
             if (meta.length() > 0) meta.append(" · ");
             meta.append(s);

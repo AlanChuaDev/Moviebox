@@ -61,7 +61,7 @@ public class MainActivity extends Activity {
     String loadedApi;                                    // 当前首页数据对应的接口；null 表示还没选接口
     final Map<Integer, List<Movie>> cache = new HashMap<>();  // 每个标签读到的片子
     final Set<Integer> loadingTabs = new HashSet<>();
-    static final String CACHE_PREFS = "moviebox_home_cache_v1";
+    static final String CACHE_PREFS = "moviebox_home_cache_v2";
     volatile List<VodApi.Category> cats;                 // 接口的分类列表（用来找「电影」「剧集」「综艺」）
 
     // 每秒刷新一次时钟
@@ -171,8 +171,13 @@ public class MainActivity extends Activity {
     // 打开详情页。autoplay 为 true 时，详情读完后直接开始播放第一集。
     void openDetail(Movie m, boolean autoplay) {
         String api = store.getActiveApi();
-        if (api == null || m.vodId == null || m.vodId.isEmpty()) {
+        if (api == null) {
             toast("请先在设置里选一个接口");
+            return;
+        }
+        // 有些首页爬虫只返回片名和海报，没有 vod_id；用片名进入搜索页补全真实站点条目。
+        if (m.vodId == null || m.vodId.trim().isEmpty()) {
+            SearchActivity.start(this, m.title);
             return;
         }
         // 豆瓣热播榜这类条目不是真正的片子，是「拿片名去所有站点搜索」的入口（影视仓也是这样处理）
