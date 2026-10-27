@@ -1,7 +1,6 @@
 package com.alan.moviebox;
 
 import android.app.Activity;
-import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
@@ -13,8 +12,8 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 import java.text.SimpleDateFormat;
@@ -22,24 +21,28 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
-// 第 1 阶段：首页界面（顶部标题和时钟、分类标签、功能按钮、海报墙），遥控器可以上下左右选
+// 首页（方案 D · 影院暗调）：整屏背景 + 左侧大标题和按钮 + 底部带数字的海报栏。
+// 焦点移到哪部片，上面的标题、简介和背景颜色就跟着换。
 public class MainActivity extends Activity {
-    static final int C_BG = 0xFF0B0B0B;
-    static final int C_ACCENT = 0xFF1D8FB8;
-    static final int C_CHIP = 0xFF1F1F1F;
-    static final int C_FOCUS = 0xFF3A3A3A;
-    static final int COLS = 5;
+    static final int C_TEXT = 0xFFF5F1EA;
+    static final int C_MUTED = 0xFFB9B4AA;
+    static final int C_DARK = 0xFF08090B;
 
-    static final String[] TABS = {"主页", "热门电影", "热播剧集", "热播综艺"};
-    static final String[] CHIPS = {"历史", "直播", "搜索", "配置", "线路", "收藏", "设置"};
+    static final String[] TABS = {"主页", "电影", "剧集", "综艺", "搜索"};
+    static final int DATA_TABS = 4;  // 前 4 个标签有数据，「搜索」只是按钮
+    static final String[] SHELF_LABELS = {"热播推荐", "热门电影 TOP 10", "热播剧集 TOP 10", "热播综艺 TOP 10"};
 
     final Handler h = new Handler(Looper.getMainLooper());
-    final SimpleDateFormat fmt = new SimpleDateFormat("yyyy年MM月dd日 HH:mm:ss", Locale.CHINA);
+    final SimpleDateFormat fmt = new SimpleDateFormat("HH:mm", Locale.CHINA);
 
-    TextView clock;
-    ScrollView scroll;
-    LinearLayout grid;
+    float u;  // 缩放比例：屏幕宽度 ÷ 1280，让所有尺寸在不同分辨率的电视上看起来一样
+    FrameLayout root;
+    BackdropView backdrop;
+    TextView clock, heroTag, heroTitle, heroMeta, heroDesc, btnPlay, btnInfo, shelfLabel;
     final TextView[] tabViews = new TextView[TABS.length];
+    LinearLayout shelfRow;
+    HorizontalScrollView shelf;
+    Movie current;
     int curTab = -1;
     long lastBack = 0;
 
@@ -56,27 +59,19 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        u = getResources().getDisplayMetrics().widthPixels / 1280f;
 
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(C_BG);
-        root.setPadding(dp(32), dp(16), dp(32), 0);
+        root = new FrameLayout(this);
+        root.setBackgroundColor(C_DARK);
+        backdrop = new BackdropView(this);
+        root.addView(backdrop, new FrameLayout.LayoutParams(-1, -1));
+        buildHeader();
+        buildHero();
+        buildShelf();
         setContentView(root);
 
-        root.addView(buildHeader());
-        root.addView(buildTabs());
-        root.addView(buildChips());
-
-        scroll = new ScrollView(this);
-        scroll.setVerticalScrollBarEnabled(false);
-        grid = new LinearLayout(this);
-        grid.setOrientation(LinearLayout.VERTICAL);
-        grid.setPadding(0, dp(6), 0, dp(24));
-        scroll.addView(grid, new FrameLayout.LayoutParams(-1, -2));
-        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
-
         selectTab(0);
-        tabViews[0].requestFocus();
+        btnPlay.requestFocus();
     }
 
     @Override
@@ -94,207 +89,237 @@ public class MainActivity extends Activity {
 
     // ---------- 小工具 ----------
 
-    int dp(int v) {
-        return (int) (v * getResources().getDisplayMetrics().density);
+    int px(float v) {
+        return Math.round(v * u);
     }
 
-    TextView text(String s, int sp, int color, boolean bold) {
+    TextView tv(String s, float size, int color, boolean bold) {
         TextView t = new TextView(this);
         t.setText(s);
-        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_PX, size * u);
         t.setTextColor(color);
         if (bold) t.setTypeface(Typeface.DEFAULT_BOLD);
         return t;
     }
 
-    GradientDrawable round(int color, int radiusDp) {
+    GradientDrawable round(int color, float radius) {
         GradientDrawable g = new GradientDrawable();
         g.setColor(color);
-        g.setCornerRadius(dp(radiusDp));
+        g.setCornerRadius(px(radius));
         return g;
     }
 
-    // ---------- 顶部：圆形标志 + 标题 + 时钟 ----------
-
-    View buildHeader() {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-
-        View logo = new View(this);
-        GradientDrawable g = new GradientDrawable();
-        g.setShape(GradientDrawable.OVAL);
-        g.setColor(0xFFFFB300);
-        logo.setBackground(g);
-        row.addView(logo, new LinearLayout.LayoutParams(dp(32), dp(32)));
-
-        TextView title = text("MovieBox  |  热播", 26, 0xFFFFFFFF, true);
-        LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(0, -2, 1f);
-        tp.leftMargin = dp(14);
-        row.addView(title, tp);
-
-        clock = text(fmt.format(new Date()), 22, 0xFFFFFFFF, true);
-        row.addView(clock, new LinearLayout.LayoutParams(-2, -2));
-        return row;
+    // 在屏幕上放一个东西：left、top 是离左上角的距离，w、h 小于 0 时表示 -1 铺满 / -2 自适应
+    FrameLayout.LayoutParams at(float left, float top, float w, float hh) {
+        FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(
+                w < 0 ? (int) w : px(w), hh < 0 ? (int) hh : px(hh));
+        p.gravity = Gravity.TOP | Gravity.START;
+        p.leftMargin = px(left);
+        p.topMargin = px(top);
+        return p;
     }
 
-    // ---------- 分类标签：选中（或焦点移上去）就切换下面的海报墙 ----------
+    LinearLayout.LayoutParams lp(int w, int hh, float left, float top) {
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(w, hh);
+        p.leftMargin = px(left);
+        p.topMargin = px(top);
+        return p;
+    }
 
-    View buildTabs() {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setPadding(0, dp(10), 0, dp(4));
+    void toast(String s) {
+        Toast.makeText(this, s, Toast.LENGTH_SHORT).show();
+    }
+
+    // ---------- 顶部：MOVIEBOX + 标签 + 时钟 ----------
+
+    void buildHeader() {
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        root.addView(bar, at(64, 28, 1152, -2));
+
+        TextView brand = tv("MOVIEBOX", 18, C_TEXT, true);
+        brand.setLetterSpacing(0.33f);
+        bar.addView(brand, lp(-2, -2, 0, 0));
+
         for (int i = 0; i < TABS.length; i++) {
             final int n = i;
-            TextView t = text(TABS[i], 20, 0xFFBBBBBB, true);
-            t.setGravity(Gravity.CENTER);
-            t.setPadding(dp(18), dp(8), dp(18), dp(8));
+            TextView t = tv(TABS[i], 18, C_MUTED, false);
+            t.setPadding(px(14), px(8), px(14), px(8));
             t.setFocusable(true);
+            t.setClickable(true);
             t.setOnFocusChangeListener((v, has) -> {
-                if (has) selectTab(n);
-                else paintTabs();
+                if (has && n < DATA_TABS) selectTab(n);
+                paintTabs();
             });
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
-            lp.rightMargin = dp(8);
-            row.addView(t, lp);
+            t.setOnClickListener(v -> {
+                if (n == DATA_TABS) toast("「搜索」功能后面的阶段再做");
+            });
+            bar.addView(t, lp(-2, -2, i == 0 ? 28 : 0, 0));
             tabViews[i] = t;
         }
-        return row;
+
+        View spacer = new View(this);
+        bar.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1f));
+        clock = tv(fmt.format(new Date()), 18, C_MUTED, false);
+        bar.addView(clock, lp(-2, -2, 0, 0));
     }
 
     void selectTab(int n) {
-        if (n != curTab) {
-            curTab = n;
-            rebuildGrid();
+        if (n == curTab) {
+            paintTabs();
+            return;
         }
+        curTab = n;
+        rebuildShelf();
+        showMovie(SampleData.forTab(n).get(0));
         paintTabs();
     }
 
-    // 选中 = 蓝底白字，焦点 = 灰底白字，其余 = 灰字
+    // 选中的标签字是亮的、加粗；焦点所在的标签有一个浅色的胶囊底
     void paintTabs() {
         for (int i = 0; i < tabViews.length; i++) {
             TextView t = tabViews[i];
             boolean sel = i == curTab;
             boolean foc = t.isFocused();
-            t.setBackground(round(sel ? C_ACCENT : (foc ? C_FOCUS : 0x00000000), 24));
-            t.setTextColor(sel || foc ? 0xFFFFFFFF : 0xFFBBBBBB);
+            t.setBackground(foc ? round(0x29FFFFFF, 20) : null);
+            t.setTextColor(sel || foc ? C_TEXT : C_MUTED);
+            t.setTypeface(sel ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
         }
     }
 
-    // ---------- 功能按钮：历史、直播、搜索……（下个阶段再接上功能） ----------
+    // ---------- 左侧：标签 + 大标题 + 信息 + 简介 + 两个按钮 ----------
 
-    View buildChips() {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setPadding(0, dp(6), 0, dp(6));
-        for (int i = 0; i < CHIPS.length; i++) {
-            final String name = CHIPS[i];
-            final TextView t = text(name, 18, 0xFFFFFFFF, true);
-            t.setGravity(Gravity.CENTER);
-            t.setPadding(dp(22), dp(10), dp(22), dp(10));
-            t.setFocusable(true);
-            t.setClickable(true);
-            t.setBackground(round(C_CHIP, 12));
-            t.setOnFocusChangeListener((v, has) ->
-                t.setBackground(round(has ? C_ACCENT : C_CHIP, 12)));
-            t.setOnClickListener(v ->
-                Toast.makeText(this, "「" + name + "」功能后面的阶段再做", Toast.LENGTH_SHORT).show());
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
-            lp.rightMargin = dp(10);
-            row.addView(t, lp);
-        }
-        return row;
+    void buildHero() {
+        LinearLayout hero = new LinearLayout(this);
+        hero.setOrientation(LinearLayout.VERTICAL);
+        root.addView(hero, at(64, 150, 560, -2));
+
+        heroTag = tv("热播推荐", 14, 0xFFF0A35C, true);
+        heroTag.setLetterSpacing(0.2f);
+        heroTag.setPadding(px(12), px(4), px(12), px(4));
+        hero.addView(heroTag, lp(-2, -2, 0, 0));
+
+        heroTitle = tv("", 92, C_TEXT, true);
+        heroTitle.setLetterSpacing(0.06f);
+        heroTitle.setSingleLine(true);
+        heroTitle.setEllipsize(TextUtils.TruncateAt.END);
+        hero.addView(heroTitle, lp(-1, -2, 0, 12));
+
+        heroMeta = tv("", 19, C_MUTED, false);
+        hero.addView(heroMeta, lp(-2, -2, 0, 10));
+
+        heroDesc = tv("", 20, 0xFFD8D3C8, false);
+        heroDesc.setLineSpacing(0, 1.35f);
+        heroDesc.setMaxLines(3);
+        heroDesc.setEllipsize(TextUtils.TruncateAt.END);
+        hero.addView(heroDesc, lp(-1, -2, 0, 12));
+
+        LinearLayout btns = new LinearLayout(this);
+        btns.setOrientation(LinearLayout.HORIZONTAL);
+        hero.addView(btns, lp(-2, -2, 0, 26));
+        btnPlay = button("播放", true);
+        btnInfo = button("详情", false);
+        btns.addView(btnPlay, lp(-2, -2, 0, 0));
+        btns.addView(btnInfo, lp(-2, -2, 14, 0));
     }
 
-    // ---------- 海报墙：每行 COLS 张，一行一行往下排 ----------
-
-    void rebuildGrid() {
-        grid.removeAllViews();
-        List<Movie> list = SampleData.forTab(curTab);
-        int screenW = getResources().getDisplayMetrics().widthPixels;
-        int margin = dp(6);
-        int cardW = (screenW - dp(32) * 2 - margin * 2 * COLS) / COLS;
-        int cardH = cardW * 7 / 5;
-
-        LinearLayout row = null;
-        for (int i = 0; i < list.size(); i++) {
-            if (i % COLS == 0) {
-                row = new LinearLayout(this);
-                row.setOrientation(LinearLayout.HORIZONTAL);
-                grid.addView(row, new LinearLayout.LayoutParams(-1, -2));
-            }
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(cardW, cardH);
-            lp.setMargins(margin, margin, margin, margin);
-            row.addView(buildCard(list.get(i)), lp);
-        }
-        scroll.scrollTo(0, 0);
-    }
-
-    // 一张海报：渐变底色 + 大字 + 角标 + 评分 + 标题；焦点时放大并画白框
-    View buildCard(final Movie m) {
-        final FrameLayout f = new FrameLayout(this);
-        f.setFocusable(true);
-        f.setClickable(true);
-
-        int[] c = SampleData.COLORS[m.colorIdx % SampleData.COLORS.length];
-        GradientDrawable bg = new GradientDrawable(
-                GradientDrawable.Orientation.TL_BR, new int[]{c[0], c[1]});
-        bg.setCornerRadius(dp(10));
-        f.setBackground(bg);
-
-        // 标题第一个字，当作海报的大图案
-        TextView big = text(m.title.substring(0, 1), 72, 0x33FFFFFF, true);
-        big.setGravity(Gravity.CENTER);
-        f.addView(big, new FrameLayout.LayoutParams(-1, -1));
-
-        // 左上角角标
-        TextView tag = text(m.tag, 13, 0xFFFFFFFF, true);
-        tag.setBackground(round(0x99000000, 6));
-        tag.setPadding(dp(8), dp(2), dp(8), dp(2));
-        FrameLayout.LayoutParams tagLp =
-                new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
-        tagLp.setMargins(dp(8), dp(8), 0, 0);
-        f.addView(tag, tagLp);
-
-        // 左下角评分
-        TextView rating = text(m.rating, 15, 0xFFFFFFFF, true);
-        rating.setBackground(round(0x99000000, 6));
-        rating.setPadding(dp(8), dp(2), dp(8), dp(2));
-        FrameLayout.LayoutParams ratingLp =
-                new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.START);
-        ratingLp.setMargins(dp(8), 0, 0, dp(44));
-        f.addView(rating, ratingLp);
-
-        // 底部标题条（上透明、下深色的渐变，只圆下面两个角）
-        TextView title = text(m.title, 17, 0xFFFFFFFF, true);
-        title.setSingleLine(true);
-        title.setEllipsize(TextUtils.TruncateAt.END);
-        title.setPadding(dp(10), dp(8), dp(10), dp(8));
-        GradientDrawable shade = new GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x00000000, 0xCC000000});
-        float r = dp(10);
-        shade.setCornerRadii(new float[]{0, 0, 0, 0, r, r, r, r});
-        title.setBackground(shade);
-        f.addView(title, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
-
-        // 焦点效果：白色边框 + 放大一点
-        final GradientDrawable ring = new GradientDrawable();
-        ring.setColor(Color.TRANSPARENT);
-        ring.setCornerRadius(dp(10));
-        ring.setStroke(dp(3), 0xFFFFFFFF);
-        f.setOnFocusChangeListener((v, has) -> {
-            f.setForeground(has ? ring : null);
-            float s = has ? 1.06f : 1f;
-            f.animate().scaleX(s).scaleY(s).setDuration(120).start();
+    TextView button(String label, final boolean primary) {
+        final TextView b = tv(label, 22, primary ? C_DARK : C_TEXT, primary);
+        b.setGravity(Gravity.CENTER);
+        b.setPadding(px(primary ? 40 : 32), px(14), px(primary ? 40 : 32), px(14));
+        b.setFocusable(true);
+        b.setClickable(true);
+        styleButton(b, primary, false);
+        b.setOnFocusChangeListener((v, has) -> {
+            styleButton(b, primary, has);
+            float s = has ? 1.05f : 1f;
+            b.animate().scaleX(s).scaleY(s).setDuration(120).start();
         });
-
-        f.setOnClickListener(v -> Toast.makeText(this,
-                "下个阶段会在这里打开「" + m.title + "」的详情页和播放器",
-                Toast.LENGTH_SHORT).show());
-        return f;
+        b.setOnClickListener(v -> {
+            String name = current != null ? current.title : "";
+            toast(primary ? "第 2 阶段会在这里播放「" + name + "」"
+                    : "第 2 阶段会在这里打开「" + name + "」的详情页");
+        });
+        return b;
     }
 
-    // ---------- 返回键：在海报墙里先回到顶部标签，再按一次（2 秒内）才退出 ----------
+    void styleButton(TextView b, boolean primary, boolean focused) {
+        GradientDrawable g = new GradientDrawable();
+        g.setCornerRadius(px(8));
+        g.setColor(primary ? C_TEXT : (focused ? 0x66F5F1EA : 0x29F5F1EA));
+        if (focused) g.setStroke(px(3), 0xFFF0A35C);
+        b.setBackground(g);
+    }
+
+    // 焦点移到哪部片，就刷新标题、信息、简介、标签色和背景
+    void showMovie(Movie m) {
+        current = m;
+        int[] t = SampleData.theme(m.colorIdx);
+        backdrop.setTheme(t);
+        heroTitle.setText(m.title);
+        int len = m.title.length();
+        heroTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, (len <= 4 ? 92 : (len <= 6 ? 72 : 56)) * u);
+        heroMeta.setText(m.rating + "   ·   " + m.meta);
+        heroDesc.setText(m.desc);
+
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(0x00000000);
+        g.setCornerRadius(px(4));
+        g.setStroke(Math.max(1, px(1)), t[2]);
+        heroTag.setBackground(g);
+        heroTag.setTextColor(t[2]);
+    }
+
+    // ---------- 底部：栏目名 + 横向滚动的海报栏（每张前面有大号数字） ----------
+
+    void buildShelf() {
+        shelfLabel = tv(SHELF_LABELS[0], 20, C_TEXT, true);
+        shelfLabel.setLetterSpacing(0.1f);
+        root.addView(shelfLabel, at(64, 464, -2, -2));
+
+        shelf = new HorizontalScrollView(this);
+        shelf.setHorizontalScrollBarEnabled(false);
+        shelfRow = new LinearLayout(this);
+        shelfRow.setOrientation(LinearLayout.HORIZONTAL);
+        shelfRow.setGravity(Gravity.BOTTOM);
+        shelfRow.setClipChildren(false);
+        shelfRow.setClipToPadding(false);
+        shelfRow.setPadding(px(56), px(20), px(64), px(20));
+        shelf.addView(shelfRow, new FrameLayout.LayoutParams(-2, -2));
+        root.addView(shelf, at(0, 492, -1, 208));
+    }
+
+    void rebuildShelf() {
+        shelfRow.removeAllViews();
+        List<Movie> list = SampleData.forTab(curTab);
+        for (int i = 0; i < list.size(); i++) {
+            final Movie m = list.get(i);
+
+            LinearLayout item = new LinearLayout(this);
+            item.setOrientation(LinearLayout.HORIZONTAL);
+            item.setGravity(Gravity.BOTTOM);
+            item.setClipChildren(false);
+
+            OutlineNumberView num = new OutlineNumberView(this, i + 1, u);
+            item.addView(num, new LinearLayout.LayoutParams(num.neededWidth(), px(168)));
+
+            PosterView pv = new PosterView(this, m, u);
+            pv.setOnFocusChangeListener((v, has) -> {
+                if (has) showMovie(m);
+            });
+            pv.setOnClickListener(v -> toast("第 2 阶段会在这里打开「" + m.title + "」的详情页"));
+            item.addView(pv, new LinearLayout.LayoutParams(px(112), px(168)));
+
+            LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(-2, -2);
+            ip.rightMargin = px(40);
+            shelfRow.addView(item, ip);
+        }
+        shelf.scrollTo(0, 0);
+        shelfLabel.setText(SHELF_LABELS[curTab]);
+    }
+
+    // ---------- 返回键：不在顶部标签时先回到标签，再按一次（2 秒内）才退出 ----------
 
     @Override
     public void onBackPressed() {
@@ -304,8 +329,7 @@ public class MainActivity extends Activity {
             if (t == focus) inTabs = true;
         }
         if (focus != null && !inTabs) {
-            scroll.smoothScrollTo(0, 0);
-            tabViews[curTab].requestFocus();
+            tabViews[Math.max(curTab, 0)].requestFocus();
             return;
         }
         long now = System.currentTimeMillis();
@@ -313,7 +337,7 @@ public class MainActivity extends Activity {
             super.onBackPressed();
         } else {
             lastBack = now;
-            Toast.makeText(this, "再按一次返回键退出", Toast.LENGTH_SHORT).show();
+            toast("再按一次返回键退出");
         }
     }
 }
