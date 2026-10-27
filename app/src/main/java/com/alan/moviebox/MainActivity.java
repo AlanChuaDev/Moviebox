@@ -53,7 +53,7 @@ public class MainActivity extends Activity {
     long lastBack = 0;
 
     SourceStore store;
-    String loadedApi;                                    // 当前首页数据对应的接口；null 表示示例数据
+    String loadedApi;                                    // 当前首页数据对应的接口；null 表示还没选接口
     final Map<Integer, List<Movie>> cache = new HashMap<>();  // 每个标签读到的片子
     volatile List<VodApi.Category> cats;                 // 接口的分类列表（用来找「电影」「剧集」「综艺」）
 
@@ -164,7 +164,7 @@ public class MainActivity extends Activity {
     void openDetail(Movie m, boolean autoplay) {
         String api = store.getActiveApi();
         if (api == null || m.vodId == null || m.vodId.isEmpty()) {
-            toast("这是示例数据，请先在设置里选一个接口");
+            toast("请先在设置里选一个接口");
             return;
         }
         // 豆瓣热播榜这类条目不是真正的片子，是「拿片名去所有站点搜索」的入口（影视仓也是这样处理）
@@ -239,11 +239,11 @@ public class MainActivity extends Activity {
         paintTabs();
     }
 
-    // 给当前标签准备数据：没选接口就用示例数据，选了接口就联网读（读过的有缓存）
+    // 给当前标签准备数据：没选接口就提示去设置，选了接口就联网读（读过的有缓存）。不再用示例数据顶替。
     void loadTab(final int n) {
         final String api = store.getActiveApi();
         if (api == null) {
-            applyList(SampleData.forTab(n), SHELF_LABELS[n]);
+            applyEmpty("还没有选接口", "请先到右上角「设置」，扫码添加并选择一个接口。");
             return;
         }
         List<Movie> hit = cache.get(n);
@@ -288,7 +288,7 @@ public class MainActivity extends Activity {
             Net.MAIN.post(() -> {
                 if (!api.equals(store.getActiveApi())) return;  // 读的过程中换了接口，这批数据作废
                 if (result == null) {
-                    if (curTab == n) applyList(SampleData.forTab(n), "加载失败，显示的是示例数据");
+                    if (curTab == n) applyEmpty("加载失败", "这个接口读不出内容，可以到「设置」换一个接口再试。");
                     if (!isFinishing()) {
                         // 用对话框显示，方便截图发给我排查
                         new AlertDialog.Builder(this).setTitle("加载失败").setMessage(err)
@@ -300,6 +300,12 @@ public class MainActivity extends Activity {
                 if (curTab == n) applyList(result, msg != null ? msg : labelFor(n));
             });
         });
+    }
+
+    // 没有内容可显示时：大标题位置放一句短话，简介位置放说明
+    void applyEmpty(String title, String hint) {
+        applyList(new ArrayList<Movie>(), title);
+        heroDesc.setText(hint);
     }
 
     // 把一批片子放到海报栏里；空的时候把说明文字显示在大标题的位置
